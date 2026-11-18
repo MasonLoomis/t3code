@@ -277,9 +277,10 @@ jobs:
           set -euo pipefail
           git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/heads/main:refs/remotes/upstream/main"
           git push origin "refs/remotes/upstream/main:refs/heads/main" || echo "::warning::Could not mirror main."
+      # The built-in token was refused (HTTP 403) creating a release here; the sync token works.
       - name: Publish the release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
           SHA: ${{ needs.rebase.outputs.sha }}
           STABLE_SHA: ${{ needs.plan.outputs.stable_sha }}
@@ -294,7 +295,9 @@ jobs:
           else
             # The fork's copy of the upstream tag points at upstream's commit; the release tag
             # must point at the fork's build instead.
-            git push origin --delete "refs/tags/$TAG" 2>/dev/null || true
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG"
+            fi
             gh release create "$TAG" release-out/* --target "$target" \
               --title "T3 Code ${TAG#v} (Mason fork)" --notes "$notes" --latest
           fi
