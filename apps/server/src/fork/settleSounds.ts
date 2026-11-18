@@ -3,7 +3,6 @@
 import { AuthOrchestrationReadScope } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -47,21 +46,17 @@ const soundsDir = Effect.gen(function* () {
   return path.join(config.stateDir, "sounds");
 });
 
-const listRoute = HttpRouter.add(
-  "GET",
-  SETTLE_SOUNDS_ROUTE,
-  Effect.gen(function* () {
-    if (!(yield* isAuthorized())) return HttpServerResponse.text("Unauthorized", { status: 401 });
-    const fs = yield* FileSystem.FileSystem;
-    const entries = yield* fs
-      .readDirectory(yield* soundsDir)
-      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
-    const sounds = entries.filter((name) => settleSoundMimeType(name) !== null).toSorted();
-    return HttpServerResponse.jsonUnsafe({ sounds }, { headers: NO_STORE });
-  }),
-);
+const listSounds = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const entries = yield* fs
+    .readDirectory(yield* soundsDir)
+    .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
+  const sounds = entries.filter((name) => settleSoundMimeType(name) !== null).toSorted();
+  return HttpServerResponse.jsonUnsafe({ sounds }, { headers: NO_STORE });
+});
 
-const fileRoute = HttpRouter.add(
+// One wildcard route: the router also maps the bare prefix to it, which lists the folder.
+export const layerSettleSoundRoutes = HttpRouter.add(
   "GET",
   `${SETTLE_SOUNDS_ROUTE}/*`,
   Effect.gen(function* () {
@@ -69,9 +64,11 @@ const fileRoute = HttpRouter.add(
     const request = yield* HttpServerRequest.HttpServerRequest;
     const url = requestUrl(request);
     if (Option.isNone(url)) return HttpServerResponse.text("Bad Request", { status: 400 });
+    const rawName = url.value.pathname.slice(SETTLE_SOUNDS_ROUTE.length).replace(/^\//, "");
+    if (rawName.length === 0) return yield* listSounds;
     const name = (() => {
       try {
-        return decodeURIComponent(url.value.pathname.slice(`${SETTLE_SOUNDS_ROUTE}/`.length));
+        return decodeURIComponent(rawName);
       } catch {
         return "";
       }
@@ -93,5 +90,3 @@ const fileRoute = HttpRouter.add(
     return HttpServerResponse.uint8Array(bytes, { contentType: mimeType, headers: NO_STORE });
   }),
 );
-
-export const layerSettleSoundRoutes = Layer.mergeAll(listRoute, fileRoute);
