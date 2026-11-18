@@ -1,0 +1,252 @@
+# Fork-only (MasonLoomis/t3code). Rebases the fork's patch series onto each new upstream stable
+# tag (vX.Y.Z, no suffix), runs the checks, builds the Windows installer and publishes it as the
+# release the fork's auto-updater reads. Any conflict or failure opens an issue and publishes
+# nothing. See FORK.md.
+name: Fork sync
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: Rebuild and republish the current tag even if its release exists
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: fork-sync
+  cancel-in-progress: false
+
+env:
+  FORK_BRANCH: mason/stable
+  CANDIDATE_BRANCH: mason/candidate
+  UPSTREAM_URL: https://github.com/pingdotgg/t3code.git
+
+jobs:
+  plan:
+    if: github.repository == 'MasonLoomis/t3code'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      base: ${{ steps.plan.outputs.base }}
+      rebase: ${{ steps.plan.outputs.rebase }}
+      release: ${{ steps.plan.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FORK_BRANCH }}
+          fetch-depth: 0
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REBUILD: ${{ inputs.rebuild || false }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags "$UPSTREAM_URL" '+refs/tags/v*:refs/tags/v*'
+          tag="$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+          base="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)"
+          rebase=false
+          [[ "$tag" != "$base" ]] && rebase=true
+          release=true
+          if [[ "$rebase" == false && "$REBUILD" != true ]] && gh release view "mason-$tag" >/dev/null 2>&1; then
+            release=false
+          fi
+          echo "Latest upstream stable: $tag. Fork base: $base. Rebase: $rebase. Release: $release."
+          { echo "tag=$tag"; echo "base=$base"; echo "rebase=$rebase"; echo "release=$release"; } >> "$GITHUB_OUTPUT"
+
+  rebase:
+    needs: plan
+    if: needs.plan.outputs.rebase == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.rebase.outputs.sha }}
+    steps:
+      - name: Require a token that can push workflow changes
+        env:
+          TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+        run: |
+          if [[ -z "$TOKEN" ]]; then
+            echo "::error::Add a FORK_SYNC_TOKEN secret (see FORK.md). The built-in token cannot push upstream workflow changes."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FORK_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.FORK_SYNC_TOKEN }}
+      - id: rebase
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          BASE: ${{ needs.plan.outputs.base }}
+        run: |
+          set -euo pipefail
+          git config user.name "fork-sync"
+          git config user.email "fork-sync@users.noreply.github.com"
+          git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/tags/$TAG:refs/tags/$TAG" "+refs/tags/$BASE:refs/tags/$BASE"
+          if ! git rebase --onto "$TAG" "$BASE" 2> rebase-error.txt; then
+            {
+              echo "The fork's patch series does not apply cleanly to upstream \`$TAG\`. Nothing was published."
+              echo
+              echo "Conflicting files:"
+              echo '```'
+              git diff --name-only --diff-filter=U || true
+              echo '```'
+              echo "Rebase output:"
+              echo '```'
+              tail -40 rebase-error.txt
+              echo '```'
+              echo "Resolve it locally with the steps under \"Resolving a conflict\" in FORK.md."
+              echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            } > issue.md
+            git rebase --abort || true
+            gh issue create --title "Fork sync: conflict rebasing onto $TAG" --body-file issue.md
+            exit 1
+          fi
+          git push --force-with-lease origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: [plan, rebase]
+    if: |
+      !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.release == 'true' &&
+      (needs.rebase.result == 'success' || needs.rebase.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.rebase.outputs.sha || env.FORK_BRANCH }}
+          fetch-depth: 0
+      - run: git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/tags/${{ needs.plan.outputs.tag }}:refs/tags/${{ needs.plan.outputs.tag }}"
+      - uses: ./.github/actions/setup-ci-deps
+      - name: Install the test browser
+        working-directory: apps/web
+        run: vp exec playwright install --with-deps chromium
+      - name: Check the fork's changes
+        run: vp run check:changed "${{ needs.plan.outputs.tag }}"
+
+  build:
+    needs: [plan, rebase, check]
+    if: |
+      !cancelled() && needs.check.result == 'success'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.rebase.outputs.sha || env.FORK_BRANCH }}
+      - uses: ./.github/actions/setup-ci-deps
+      - name: Add Rust target
+        run: rustup target add x86_64-pc-windows-msvc
+      # The official public Clerk and relay ids, so T3 sign-in and Connect behave as in the official app.
+      - name: Use the public cloud config
+        run: cp .env.example .env
+      # The Windows app runs this Linux CLI inside WSL. The fork's patch does not touch it, so the
+      # official archive for the same version is used as is.
+      - name: Download the WSL runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p wsl-runtime
+          gh release download "$TAG" -R pingdotgg/t3code -p "t3-${TAG#v}-linux-x64.tar.gz" -D wsl-runtime
+      - name: Build the installer
+        env:
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          vp run dist:desktop:artifact --platform win --target nsis --arch x64 \
+            --build-version "${TAG#v}" --output-dir release-out \
+            --wsl-runtime "$(ls wsl-runtime/*.tar.gz)" --verbose
+          ls -la release-out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            release-out/*.exe
+            release-out/*.blockmap
+            release-out/latest.yml
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    needs: [plan, rebase, build]
+    if: |
+      !cancelled() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FORK_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: release-out
+      - name: Move the fork branch to the rebased commit
+        if: needs.rebase.outputs.sha != ''
+        env:
+          SHA: ${{ needs.rebase.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "$CANDIDATE_BRANCH"
+          git push --force-with-lease="$FORK_BRANCH:$(git rev-parse HEAD)" origin "$SHA:refs/heads/$FORK_BRANCH"
+          git push origin --delete "$CANDIDATE_BRANCH" || true
+      - name: Mirror upstream main and the new tag
+        if: needs.rebase.outputs.sha != ''
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/heads/main:refs/remotes/upstream/main" "+refs/tags/$TAG:refs/tags/$TAG"
+          git push origin "refs/remotes/upstream/main:refs/heads/main" "refs/tags/$TAG" || echo "::warning::Could not mirror main or $TAG."
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          SHA: ${{ needs.rebase.outputs.sha }}
+        run: |
+          set -euo pipefail
+          target="${SHA:-$(git rev-parse HEAD)}"
+          notes="T3 Code ${TAG} with Mason's fork patches (settle sounds). Upstream notes: https://github.com/pingdotgg/t3code/releases/tag/${TAG}
+
+          Windows only, unsigned: SmartScreen asks once before the installer runs. See FORK.md."
+          if gh release view "mason-$TAG" >/dev/null 2>&1; then
+            gh release upload "mason-$TAG" release-out/* --clobber
+          else
+            gh release create "mason-$TAG" release-out/* --target "$target" \
+              --title "T3 Code ${TAG#v} (Mason fork)" --notes "$notes" --latest
+          fi
+
+  report:
+    needs: [plan, rebase, check, build, publish]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          RESULTS: "plan=${{ needs.plan.result }} rebase=${{ needs.rebase.result }} check=${{ needs.check.result }} build=${{ needs.build.result }} publish=${{ needs.publish.result }}"
+        run: |
+          set -euo pipefail
+          title="Fork sync failed for ${TAG:-the latest tag}"
+          # A rebase conflict already opened its own issue.
+          [[ "$RESULTS" == *"rebase=failure"* ]] && exit 0
+          if gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number' | grep -q .; then
+            exit 0
+          fi
+          gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body "Nothing was published. Job results: $RESULTS
+
+          Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
