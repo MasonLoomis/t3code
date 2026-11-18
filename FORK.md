@@ -26,15 +26,8 @@ issue against `pingdotgg/t3code` from this fork.
 - **Unsigned builds.** Windows SmartScreen shows "Windows protected your PC" the first time you
   run an installer. Choose **More info → Run anyway**.
 
-The patch is small on purpose so upstream updates rarely conflict:
-
-| Where                                                                                                                             | What                                                 |
-| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `packages/contracts/src/settleSounds.ts`                                                                                          | The `settleSounds` client setting                    |
-| `apps/server/src/fork/settleSounds.ts`                                                                                            | `GET /api/fork/sounds` and `/api/fork/sounds/<file>` |
-| `apps/web/src/fork/`                                                                                                              | Playback, the header button and the Settings section |
-| One or two lines each in `settings.ts`, `server.ts`, `appInit.tsx`, `ChatHeader.tsx`, `SettingsPanels.tsx`, `useThreadActions.ts` | Hook points                                          |
-| `.github/workflows/fork-sync.yml`, `FORK.md`                                                                                      | Sync and docs                                        |
+The patch is small on purpose so upstream updates rarely conflict. New code lives in `fork/` folders and
+`settleSounds.ts` files; upstream files only gain a line or two where they hook it in.
 
 How a settle is classified: `useThreadActions.settleThread` is the one path every manual settle
 in the app takes (sidebar, menus, keybinding, command palette). It claims the thread and plays the
@@ -46,10 +39,10 @@ a thread that becomes settled without a claim from this window plays the automat
 | Ref               | Meaning                                                                            |
 | ----------------- | ---------------------------------------------------------------------------------- |
 | `main`            | Mirror of `pingdotgg/t3code` `main`. Never commit here.                            |
-| `vX.Y.Z`          | Upstream stable tags, mirrored.                                                    |
+| `vX.Y.Z`          | Fork releases, on the fork's commit. The app links update notes to this tag.       |
 | `mason/stable`    | The default branch: the latest upstream stable tag plus the fork's commits on top. |
 | `mason/candidate` | Temporary branch the sync workflow builds before it moves `mason/stable`.          |
-| `mason-vX.Y.Z`    | Fork releases. The installer's version is the upstream version.                    |
+| `base/v0.1.10`    | Review base for the fork's pull request, at the upstream tag.                      |
 
 ## How syncing works
 
@@ -62,9 +55,9 @@ workflow). It:
 3. Runs `vp run check:changed <tag>` (format, lint, typecheck and the tests beside the fork's
    changes).
 4. Builds the x64 NSIS installer on a Windows runner, with the official public sign-in config
-   from `.env.example` and the official WSL runtime archive for the same version.
-5. Publishes release `mason-vX.Y.Z` with the installer, its blockmap and `latest.yml`, marks it
-   latest, moves `mason/stable`, and mirrors upstream `main` and the tag.
+   from `.env.example` and a WSL runtime archive built from the fork on Linux.
+5. Publishes release `vX.Y.Z` with the installer, its blockmap and `latest.yml`, marks it latest,
+   moves `mason/stable` (only if nobody pushed to it during the run), and mirrors upstream `main`.
 
 A conflict or any failed step opens an issue on this repository and publishes nothing.
 

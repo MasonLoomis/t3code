@@ -64,7 +64,11 @@ import { showThreadUndoNotice } from "./showThreadUndoNotice";
 import { useAtomCommand } from "../state/use-atom-command";
 import { threadTriagePermitted, useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
-import { claimManualSettle, playManualSettleSound } from "../fork/settleSounds";
+import {
+  claimManualSettle,
+  playManualSettleSound,
+  releaseManualSettle,
+} from "../fork/settleSounds";
 
 export class ThreadArchiveBlockedError extends Schema.TaggedError<ThreadArchiveBlockedError>()(
   "ThreadArchiveBlockedError",
@@ -873,6 +877,7 @@ export function useThreadActions() {
       input: { threadId: target.threadId },
     });
     if (result._tag !== "Success") {
+      releaseManualSettle(target);
       action.finish();
       return result;
     }
