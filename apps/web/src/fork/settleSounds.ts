@@ -47,11 +47,30 @@ export async function listSettleSounds(): Promise<ReadonlyArray<string>> {
   return Array.isArray(sounds) ? sounds.filter((name) => typeof name === "string") : [];
 }
 
+// Insertion-ordered, so the oldest entry is evicted first. Two selections plus one preview fit.
 const objectUrls = new Map<string, Promise<string | null>>();
+const MAX_CACHED_SOUNDS = 3;
+
+function forgetSound(name: string): void {
+  const cached = objectUrls.get(name);
+  if (cached === undefined) return;
+  objectUrls.delete(name);
+  void cached.then((url) => {
+    if (url !== null) URL.revokeObjectURL(url);
+  });
+}
 
 function soundObjectUrl(name: string): Promise<string | null> {
   let cached = objectUrls.get(name);
-  if (cached === undefined) {
+  if (cached !== undefined) {
+    objectUrls.delete(name);
+    objectUrls.set(name, cached);
+  } else {
+    while (objectUrls.size >= MAX_CACHED_SOUNDS) {
+      const oldest = objectUrls.keys().next();
+      if (oldest.done === true) break;
+      forgetSound(oldest.value);
+    }
     cached = fetchPrimary(`${SOUNDS_ROUTE}/${encodeURIComponent(name)}`)
       .then(async (response) =>
         response === null ? null : URL.createObjectURL(await response.blob()),
@@ -59,7 +78,7 @@ function soundObjectUrl(name: string): Promise<string | null> {
       .catch(() => null);
     // A missing file is retried next time, so a sound copied in later starts working.
     void cached.then((url) => {
-      if (url === null) objectUrls.delete(name);
+      if (url === null && objectUrls.get(name) === cached) objectUrls.delete(name);
     });
     objectUrls.set(name, cached);
   }
@@ -103,6 +122,11 @@ export function claimManualSettle(target: ScopedThreadRef): void {
   manualClaims.set(target.environmentId, claims);
 }
 
+/** Called when the user's settle failed, so the next settle of that thread is not ignored. */
+export function releaseManualSettle(target: ScopedThreadRef): void {
+  manualClaims.get(target.environmentId)?.delete(target.threadId);
+}
+
 // Set while startSettleSounds runs, so settling before app start (or in tests) stays silent.
 let currentSettings: ClientSettings["settleSounds"] | null = null;
 
@@ -133,6 +157,7 @@ export function startSettleSounds(registry: AtomRegistry.AtomRegistry): () => vo
           nowMs,
         });
         previous = result.next;
+        for (const threadId of result.consumed) claims.delete(threadId);
         if (result.settled.length > 0 && currentSettings !== null) {
           playSettleSound("automatic", currentSettings);
         }
@@ -166,5 +191,6 @@ export function startSettleSounds(registry: AtomRegistry.AtomRegistry): () => vo
     for (const unsubscribe of watched.values()) unsubscribe();
     watched.clear();
     currentSettings = null;
+    for (const name of objectUrls.keys()) forgetSound(name);
   };
 }

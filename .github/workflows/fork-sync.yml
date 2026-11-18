@@ -36,6 +36,7 @@ jobs:
       base: ${{ steps.plan.outputs.base }}
       rebase: ${{ steps.plan.outputs.rebase }}
       release: ${{ steps.plan.outputs.release }}
+      stable_sha: ${{ steps.plan.outputs.stable_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,11 +54,18 @@ jobs:
           rebase=false
           [[ "$tag" != "$base" ]] && rebase=true
           release=true
-          if [[ "$rebase" == false && "$REBUILD" != true ]] && gh release view "mason-$tag" >/dev/null 2>&1; then
+          # Fork releases use the upstream tag name because the app links update notes to vX.Y.Z.
+          if [[ "$rebase" == false && "$REBUILD" != true ]] && gh release view "$tag" >/dev/null 2>&1; then
             release=false
           fi
           echo "Latest upstream stable: $tag. Fork base: $base. Rebase: $rebase. Release: $release."
-          { echo "tag=$tag"; echo "base=$base"; echo "rebase=$rebase"; echo "release=$release"; } >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$tag"
+            echo "base=$base"
+            echo "rebase=$rebase"
+            echo "release=$release"
+            echo "stable_sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
 
   rebase:
     needs: plan
@@ -65,6 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.rebase.outputs.sha }}
+      conflict: ${{ steps.rebase.outputs.conflict }}
     steps:
       - name: Require a token that can push workflow changes
         env:
@@ -106,6 +115,7 @@ jobs:
             } > issue.md
             git rebase --abort || true
             gh issue create --title "Fork sync: conflict rebasing onto $TAG" --body-file issue.md
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
             exit 1
           fi
           git push --force-with-lease origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
@@ -131,10 +141,57 @@ jobs:
       - name: Check the fork's changes
         run: vp run check:changed "${{ needs.plan.outputs.tag }}"
 
-  build:
+  # The Windows app runs this Linux CLI inside WSL, and in WSL-only mode it is the server the
+  # app talks to, so it is built from the fork too rather than taken from the upstream release.
+  wsl-runtime:
     needs: [plan, rebase, check]
     if: |
       !cancelled() && needs.check.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.rebase.outputs.sha || env.FORK_BRANCH }}
+      - uses: ./.github/actions/setup-ci-deps
+      - name: Align package versions to the release
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: node scripts/update-release-package-versions.ts "${TAG#v}"
+      - name: Use the public cloud config
+        run: cp .env.example .env
+      - name: Build the server and web bundle
+        run: vp run build:desktop:bundle
+      - name: Apply web client branding
+        run: node scripts/apply-web-brand-assets.ts production apps/server/dist/client
+      - name: Build the resource monitor
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml --target x86_64-unknown-linux-gnu
+          mkdir -p "$RUNNER_TEMP/cli-resource-monitor/linux-x64"
+          cp native/resource-monitor/target/x86_64-unknown-linux-gnu/release/t3-resource-monitor "$RUNNER_TEMP/cli-resource-monitor/linux-x64/"
+      - name: Build the CLI executable
+        run: node apps/server/scripts/cli.ts build-exe --verbose
+      - name: Install patchelf
+        run: command -v patchelf || { sudo apt-get update && sudo apt-get install -y patchelf; }
+      - name: Build and smoke-test the CLI archive
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node scripts/build-cli-archive.ts --platform linux --arch x64 --version "${TAG#v}" \
+            --resource-monitor-dir "$RUNNER_TEMP/cli-resource-monitor" --output-dir release-cli
+          node scripts/smoke-cli-archive.ts --archive release-cli/* --expect-version "${TAG#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wsl-runtime
+          path: release-cli/*.tar.gz
+          if-no-files-found: error
+
+  build:
+    needs: [plan, rebase, check, wsl-runtime]
+    if: |
+      !cancelled() && needs.wsl-runtime.result == 'success'
     runs-on: windows-latest
     timeout-minutes: 90
     defaults:
@@ -145,21 +202,19 @@ jobs:
         with:
           ref: ${{ needs.rebase.outputs.sha || env.FORK_BRANCH }}
       - uses: ./.github/actions/setup-ci-deps
+      - name: Align package versions to the release
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: node scripts/update-release-package-versions.ts "${TAG#v}"
       - name: Add Rust target
         run: rustup target add x86_64-pc-windows-msvc
       # The official public Clerk and relay ids, so T3 sign-in and Connect behave as in the official app.
       - name: Use the public cloud config
         run: cp .env.example .env
-      # The Windows app runs this Linux CLI inside WSL. The fork's patch does not touch it, so the
-      # official archive for the same version is used as is.
-      - name: Download the WSL runtime
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.plan.outputs.tag }}
-        run: |
-          set -euo pipefail
-          mkdir -p wsl-runtime
-          gh release download "$TAG" -R pingdotgg/t3code -p "t3-${TAG#v}-linux-x64.tar.gz" -D wsl-runtime
+      - uses: actions/download-artifact@v4
+        with:
+          name: wsl-runtime
+          path: wsl-runtime
       # Official Windows installers are cross-built on Linux, which never generates the server
       # compile cache. Building on Windows would add it and exceed the 80-file payload limit;
       # this flag skips it (and the bundle self-check that the check job already covers).
@@ -191,7 +246,7 @@ jobs:
           compression-level: 0
 
   publish:
-    needs: [plan, rebase, build]
+    needs: [plan, rebase, wsl-runtime, build]
     if: |
       !cancelled() && needs.build.result == 'success'
     runs-on: ubuntu-latest
@@ -209,51 +264,56 @@ jobs:
         if: needs.rebase.outputs.sha != ''
         env:
           SHA: ${{ needs.rebase.outputs.sha }}
+          # The commit the rebase started from, so a push made during the build is never overwritten.
+          EXPECTED: ${{ needs.plan.outputs.stable_sha }}
         run: |
           set -euo pipefail
           git fetch --quiet origin "$CANDIDATE_BRANCH"
-          git push --force-with-lease="$FORK_BRANCH:$(git rev-parse HEAD)" origin "$SHA:refs/heads/$FORK_BRANCH"
+          git push --force-with-lease="$FORK_BRANCH:$EXPECTED" origin "$SHA:refs/heads/$FORK_BRANCH"
           git push origin --delete "$CANDIDATE_BRANCH" || true
-      - name: Mirror upstream main and the new tag
+      - name: Mirror upstream main
         if: needs.rebase.outputs.sha != ''
-        env:
-          TAG: ${{ needs.plan.outputs.tag }}
         run: |
           set -euo pipefail
-          git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/heads/main:refs/remotes/upstream/main" "+refs/tags/$TAG:refs/tags/$TAG"
-          git push origin "refs/remotes/upstream/main:refs/heads/main" "refs/tags/$TAG" || echo "::warning::Could not mirror main or $TAG."
+          git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/heads/main:refs/remotes/upstream/main"
+          git push origin "refs/remotes/upstream/main:refs/heads/main" || echo "::warning::Could not mirror main."
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
           SHA: ${{ needs.rebase.outputs.sha }}
+          STABLE_SHA: ${{ needs.plan.outputs.stable_sha }}
         run: |
           set -euo pipefail
-          target="${SHA:-$(git rev-parse HEAD)}"
+          target="${SHA:-$STABLE_SHA}"
           notes="T3 Code ${TAG} with Mason's fork patches (settle sounds). Upstream notes: https://github.com/pingdotgg/t3code/releases/tag/${TAG}
 
           Windows only, unsigned: SmartScreen asks once before the installer runs. See FORK.md."
-          if gh release view "mason-$TAG" >/dev/null 2>&1; then
-            gh release upload "mason-$TAG" release-out/* --clobber
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-out/* --clobber
           else
-            gh release create "mason-$TAG" release-out/* --target "$target" \
+            # The fork's copy of the upstream tag points at upstream's commit; the release tag
+            # must point at the fork's build instead.
+            git push origin --delete "refs/tags/$TAG" 2>/dev/null || true
+            gh release create "$TAG" release-out/* --target "$target" \
               --title "T3 Code ${TAG#v} (Mason fork)" --notes "$notes" --latest
           fi
 
   report:
-    needs: [plan, rebase, check, build, publish]
+    needs: [plan, rebase, check, wsl-runtime, build, publish]
     if: failure()
     runs-on: ubuntu-latest
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
-          RESULTS: "plan=${{ needs.plan.result }} rebase=${{ needs.rebase.result }} check=${{ needs.check.result }} build=${{ needs.build.result }} publish=${{ needs.publish.result }}"
+          CONFLICT: ${{ needs.rebase.outputs.conflict }}
+          RESULTS: "plan=${{ needs.plan.result }} rebase=${{ needs.rebase.result }} check=${{ needs.check.result }} wsl-runtime=${{ needs.wsl-runtime.result }} build=${{ needs.build.result }} publish=${{ needs.publish.result }}"
         run: |
           set -euo pipefail
           title="Fork sync failed for ${TAG:-the latest tag}"
           # A rebase conflict already opened its own issue.
-          [[ "$RESULTS" == *"rebase=failure"* ]] && exit 0
+          [[ "$CONFLICT" == "true" ]] && exit 0
           if gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number' | grep -q .; then
             exit 0
           fi
