@@ -124,6 +124,7 @@ import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./IntegrationsSettings";
 import { StorageCleanupSections } from "./StorageSettings";
+import { SettleSoundSettingsSection } from "../../fork/SettleSoundSettings";
 import { UpdateTrackSwitchDialog } from "./UpdateTrackSwitchDialog";
 import { environmentIdsKey } from "~/state/environmentAtomList";
 import { environmentSessionStatesAtom } from "~/state/session";
@@ -877,6 +878,8 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      <SettleSoundSettingsSection />
 
       <SettingsSection id="sidebar" title={gt("Sidebar")}>
         <SettingsRow
