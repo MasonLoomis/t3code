@@ -69,13 +69,16 @@ failure issue that says the secret is missing.
 
 ## Resolving a conflict
 
+The fork's `vX.Y.Z` tags point at fork commits, so fetch upstream's tags into their own namespace
+and rebase between those:
+
 ```sh
 git fetch origin
-git fetch https://github.com/pingdotgg/t3code.git 'refs/tags/v*:refs/tags/v*'
+git fetch https://github.com/pingdotgg/t3code.git '+refs/tags/v*:refs/upstream-tags/v*'
 git switch mason/stable
-git rebase --onto vNEW vOLD        # vOLD is the tag mason/stable is based on now
+git rebase --onto refs/upstream-tags/vNEW refs/upstream-tags/vOLD   # vOLD: the base mason/stable is on now
 # fix each conflict, then: git add <files> && git rebase --continue
-vp i && vp run check:changed vNEW
+vp i && vp run check:changed refs/upstream-tags/vNEW
 git push --force-with-lease origin mason/stable
 ```
 
