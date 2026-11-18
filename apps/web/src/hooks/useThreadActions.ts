@@ -61,6 +61,7 @@ import { showThreadUndoNotice } from "./showThreadUndoNotice";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
+import { claimManualSettle, playManualSettleSound } from "../fork/settleSounds";
 
 export class ThreadArchiveBlockedError extends Schema.TaggedError<ThreadArchiveBlockedError>()(
   "ThreadArchiveBlockedError",
@@ -829,6 +830,7 @@ export function useThreadActions() {
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
     ThreadUndo.invalidate("snooze", scopedThreadKey(target));
     const action = ThreadUndo.begin("settle", scopedThreadKey(target));
+    claimManualSettle(target);
     const result = await settleThreadMutation({
       environmentId: target.environmentId,
       input: { threadId: target.threadId },
@@ -837,6 +839,7 @@ export function useThreadActions() {
       action.finish();
       return result;
     }
+    playManualSettleSound();
     if (wokeAt !== null) {
       markThreadVisited(scopedThreadKey(target), wokeAt);
     }
