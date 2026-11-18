@@ -39,6 +39,7 @@ import * as KeepAwake from "./background/KeepAwake.ts";
 import * as ServerConfig from "./config.ts";
 import { withRootRequestSpans, withUntracedRequests } from "./http.ts";
 import * as ServerHttp from "./http.ts";
+import { layerSettleSoundRoutes } from "./fork/settleSounds.ts";
 import {
   guardHttpResponseWriteErrors,
   keepIdleConnections,
@@ -916,6 +917,7 @@ const layerMakeRoutes = Layer.mergeAll(
     ServerHttp.layerDesktopReadinessProofRoute,
     ServerHttp.layerAssetRoute,
     ServerHttp.layerAttachmentUploadRoute,
+    layerSettleSoundRoutes,
     GuestHttp.layer,
     LinkThreadHttp.layer,
     DeviceHubProxy.layer,
