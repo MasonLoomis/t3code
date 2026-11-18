@@ -131,7 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.rebase.outputs.sha || env.FORK_BRANCH }}
+          ref: ${{ needs.rebase.outputs.sha || needs.plan.outputs.stable_sha }}
           fetch-depth: 0
       - run: git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/tags/${{ needs.plan.outputs.tag }}:refs/tags/${{ needs.plan.outputs.tag }}"
       - uses: ./.github/actions/setup-ci-deps
@@ -152,7 +152,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.rebase.outputs.sha || env.FORK_BRANCH }}
+          ref: ${{ needs.rebase.outputs.sha || needs.plan.outputs.stable_sha }}
       - uses: ./.github/actions/setup-ci-deps
       - name: Align package versions to the release
         env:
@@ -200,7 +200,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.rebase.outputs.sha || env.FORK_BRANCH }}
+          ref: ${{ needs.rebase.outputs.sha || needs.plan.outputs.stable_sha }}
       - uses: ./.github/actions/setup-ci-deps
       - name: Align package versions to the release
         env:
