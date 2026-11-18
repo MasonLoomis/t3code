@@ -63,5 +63,7 @@ describe("newlySettledThreads", () => {
       nowMs: MANUAL_SETTLE_CLAIM_MS + 1,
     });
     expect(result.settled).toEqual(["old-claim"]);
+    // The claim covers one transition, so the caller drops it and a later settle sounds.
+    expect(result.consumed).toEqual(["mine"]);
   });
 });

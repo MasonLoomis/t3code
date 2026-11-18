@@ -10,7 +10,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
-import { layerSettleSoundRoutes, settleSoundMimeType } from "./settleSounds.ts";
+import { settleSoundMimeType } from "./SettleSoundFiles.ts";
+import { layerSettleSoundRoutes } from "./settleSounds.ts";
 
 describe("settleSoundMimeType", () => {
   it("accepts plain audio file names in the sounds folder", () => {
@@ -45,11 +46,10 @@ describe("settle sound routes", () => {
               } as unknown as EnvironmentAuth.AuthenticatedSession)
             : Effect.fail(new EnvironmentAuth.ServerAuthMissingCredentialError()),
       });
-      // Route handlers read these per request, so they stay in the app's context.
       const layerApp = layerSettleSoundRoutes.pipe(
-        Layer.provideMerge(layerAuth),
-        Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provide(layerAuth),
+        Layer.provide(ServerConfig.layerTest(process.cwd(), baseDir)),
+        Layer.provide(NodeServices.layer),
       );
       const { handler, dispose } = HttpRouter.toWebHandler(layerApp, { disableLogger: true });
       try {
