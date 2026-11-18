@@ -160,8 +160,12 @@ jobs:
           set -euo pipefail
           mkdir -p wsl-runtime
           gh release download "$TAG" -R pingdotgg/t3code -p "t3-${TAG#v}-linux-x64.tar.gz" -D wsl-runtime
+      # Official Windows installers are cross-built on Linux, which never generates the server
+      # compile cache. Building on Windows would add it and exceed the 80-file payload limit;
+      # this flag skips it (and the bundle self-check that the check job already covers).
       - name: Build the installer
         env:
+          T3CODE_DESKTOP_UNTRUSTED_BUNDLE: "true"
           T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
           TAG: ${{ needs.plan.outputs.tag }}
         run: |
