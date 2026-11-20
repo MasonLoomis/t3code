@@ -1,8 +1,12 @@
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
-const { synthesized } = vi.hoisted(() => ({ synthesized: vi.fn(() => 0.6) }));
+const { synthesized, readClip } = vi.hoisted(() => ({
+  synthesized: vi.fn(() => 0.6),
+  readClip: vi.fn(),
+}));
 vi.mock("./soundSynthesizer", () => ({ playSynthesizedSound: synthesized }));
+vi.mock("./customSoundStore", () => ({ readCustomSound: readClip }));
 
 const playing = { time: 0, samples: 0, disconnected: 0, gains: [] as number[] };
 class TestAudioContext {
@@ -136,6 +140,26 @@ it("rechecks notification eligibility before playback and keeps opted-out events
     soundEvents: { "voice-start": true },
   }));
   expect(synthesized).toHaveBeenCalledTimes(1);
+});
+
+it("stops a playing voice cue and discards a pending cue when a new recording starts", async () => {
+  const { unlockSoundAudio, playVoiceSound, setDictationRecording } = await import("./soundEngine");
+  vi.stubGlobal("indexedDB", {});
+  unlockSoundAudio();
+  const read = () => ({ ...defaults(), soundEvents: { "voice-stop": true } });
+  const clip = { id: "stop", data: new ArrayBuffer(1) };
+  readClip.mockResolvedValueOnce(clip);
+  await playVoiceSound("voice-stop", read);
+  expect(playing.samples).toBe(1);
+
+  const pendingClip = Promise.withResolvers<typeof clip>();
+  readClip.mockReturnValueOnce(pendingClip.promise);
+  const pendingCue = playVoiceSound("voice-stop", read);
+  setDictationRecording({}, true);
+  pendingClip.resolve(clip);
+  await pendingCue;
+  expect(playing.disconnected).toBe(1);
+  expect(playing.samples).toBe(1);
 });
 
 it("applies all three focus rules to the foreground, another thread, and an unfocused window", async () => {

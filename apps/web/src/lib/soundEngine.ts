@@ -42,7 +42,9 @@ let audio: AudioOutput | undefined;
 let resume: Promise<void> | undefined;
 let activeNotification: (Playback & { event: NotificationEvent }) | undefined;
 let activePreview: Playback | undefined;
+let activeVoice: Playback | undefined;
 let previewSequence = 0;
+let voiceSequence = 0;
 let notificationEpoch = 0;
 let preloadedNotifications = false;
 const recordingSessions = new Set<object>();
@@ -129,6 +131,9 @@ export function setDictationRecording(session: object, recording: boolean): void
   pending.clear();
   activeNotification?.stop();
   activeNotification = undefined;
+  voiceSequence += 1;
+  activeVoice?.stop();
+  activeVoice = undefined;
 }
 
 async function loadEvent(
@@ -280,12 +285,25 @@ export async function playVoiceSound(
 ): Promise<void> {
   const output = audio;
   const settings = eligible(event, read);
-  if (!output || !settings || output.context.state !== "running") return;
+  if (
+    !output ||
+    !settings ||
+    output.context.state !== "running" ||
+    (event !== "voice-start" && recordingSessions.size > 0)
+  )
+    return;
+  const sequence = ++voiceSequence;
   try {
     const buffer = await loadEvent(output, event, settings.soundPack, true);
     const current = eligible(event, read);
-    if (current && current.soundPack === settings.soundPack && output.context.state === "running") {
-      playEvent(output, event, current.soundPack, current.soundVolume, buffer);
+    if (
+      sequence === voiceSequence &&
+      current &&
+      current.soundPack === settings.soundPack &&
+      output.context.state === "running"
+    ) {
+      activeVoice?.stop();
+      activeVoice = playEvent(output, event, current.soundPack, current.soundVolume, buffer);
     }
   } catch {
     // An unavailable earcon must not interrupt dictation.
