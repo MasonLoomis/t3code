@@ -25,9 +25,16 @@ import {
 import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
 import { UsageModelFilter } from "./usage.ts";
 import { SecretProviderId, SecretProviderSlug } from "./secretReference.ts";
-import { SettingsSecretValue } from "./settingsSecretValue.ts";
+import { containsSecretReference, SettingsSecretValue } from "./settingsSecretValue.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
+import {
+  SETTLE_SOUND_PACK_DEFAULT,
+  SettleSoundSettings,
+  settleSoundsSetting,
+} from "./settleSounds.ts";
+
+export { SETTLE_SOUND_PACK_DEFAULT };
 import {
   CustomModelSetting,
   DEFAULT_TEXT_GENERATION_MODEL,
@@ -277,6 +284,116 @@ export const NotificationMode = Schema.Literals([
 ]);
 export type NotificationMode = typeof NotificationMode.Type;
 
+export const SOUND_PACK_IDS = ["default", "minimal", "retro", "galactic"] as const;
+export const SoundPackId = Schema.Literals(SOUND_PACK_IDS);
+export type SoundPackId = typeof SoundPackId.Type;
+const DEFAULT_SOUND_PACK: SoundPackId = "default";
+
+export const MIN_SOUND_VOLUME = 0;
+export const MAX_SOUND_VOLUME = 100;
+export const SoundVolume = Schema.Int.check(
+  Schema.isBetween({ minimum: MIN_SOUND_VOLUME, maximum: MAX_SOUND_VOLUME }),
+);
+export type SoundVolume = typeof SoundVolume.Type;
+export const DEFAULT_SOUND_VOLUME: SoundVolume = 80;
+
+export const SOUND_FOCUS_POLICIES = ["always", "background-threads", "unfocused"] as const;
+export const SoundFocusPolicy = Schema.Literals(SOUND_FOCUS_POLICIES);
+export type SoundFocusPolicy = typeof SoundFocusPolicy.Type;
+const DEFAULT_SOUND_FOCUS_POLICY: SoundFocusPolicy = "always";
+
+const SOUND_EVENT_IDS = [
+  "completion",
+  "input",
+  "approval",
+  "failed",
+  "all-done",
+  "voice-start",
+  "voice-stop",
+  "voice-error",
+] as const;
+export type SoundEventId = (typeof SOUND_EVENT_IDS)[number];
+
+export type SettleSoundEventId = "settle-manual" | "settle-automatic" | "unsettle";
+export type SynthesizedSoundEventId = SoundEventId | SettleSoundEventId;
+
+export const CUSTOM_SOUND_CLIP_IDS = [...SOUND_EVENT_IDS, "snap-shot"] as const;
+export type CustomSoundClipId = (typeof CUSTOM_SOUND_CLIP_IDS)[number];
+
+const SOUND_VOLUME_EVENT_IDS = [
+  ...CUSTOM_SOUND_CLIP_IDS,
+  "settle-manual",
+  "settle-automatic",
+  "unsettle",
+] as const;
+export type SoundVolumeEventId = (typeof SOUND_VOLUME_EVENT_IDS)[number];
+
+export const SoundThemeConfig = Schema.Struct({
+  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  themeId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  soundPack: SoundPackId,
+  settleManualSound: Schema.String.check(Schema.isMaxLength(255)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
+  ),
+  settleAutomaticSound: Schema.String.check(Schema.isMaxLength(255)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
+  ),
+  unsettleSound: Schema.String.check(Schema.isMaxLength(255)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
+  ),
+  autoApplyWithTheme: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+});
+export type SoundThemeConfig = typeof SoundThemeConfig.Type;
+
+export const DEFAULT_SOUND_EVENT_ENABLED: Readonly<Record<SoundEventId, boolean>> = {
+  completion: true,
+  input: true,
+  approval: true,
+  failed: true,
+  "all-done": false,
+  "voice-start": false,
+  "voice-stop": false,
+  "voice-error": false,
+};
+
+const SoundEventOverrides = Schema.Struct({
+  completion: Schema.optionalKey(Schema.Boolean),
+  input: Schema.optionalKey(Schema.Boolean),
+  approval: Schema.optionalKey(Schema.Boolean),
+  failed: Schema.optionalKey(Schema.Boolean),
+  "all-done": Schema.optionalKey(Schema.Boolean),
+  "voice-start": Schema.optionalKey(Schema.Boolean),
+  "voice-stop": Schema.optionalKey(Schema.Boolean),
+  "voice-error": Schema.optionalKey(Schema.Boolean),
+});
+
+const SoundEventVolumeOverrides = Schema.Struct({
+  completion: Schema.optionalKey(SoundVolume),
+  input: Schema.optionalKey(SoundVolume),
+  approval: Schema.optionalKey(SoundVolume),
+  failed: Schema.optionalKey(SoundVolume),
+  "all-done": Schema.optionalKey(SoundVolume),
+  "voice-start": Schema.optionalKey(SoundVolume),
+  "voice-stop": Schema.optionalKey(SoundVolume),
+  "voice-error": Schema.optionalKey(SoundVolume),
+  "snap-shot": Schema.optionalKey(SoundVolume),
+  "settle-manual": Schema.optionalKey(SoundVolume),
+  "settle-automatic": Schema.optionalKey(SoundVolume),
+  unsettle: Schema.optionalKey(SoundVolume),
+});
+export type SoundEventVolumeOverrides = typeof SoundEventVolumeOverrides.Type;
+
+export function resolveSoundVolume(
+  event: SoundVolumeEventId,
+  settings: {
+    readonly soundVolume: number;
+    readonly soundEventVolumes?: SoundEventVolumeOverrides | undefined;
+  },
+): number {
+  return settings.soundEventVolumes?.[event] ?? settings.soundVolume;
+}
+
 export const QuitConfirmationMode = Schema.Literals(["direct", "hold", "double-click"]);
 export type QuitConfirmationMode = typeof QuitConfirmationMode.Type;
 const DEFAULT_QUIT_CONFIRMATION_MODE: QuitConfirmationMode = "hold";
@@ -403,8 +520,22 @@ export const VoiceTranscriptionDestination = Schema.Union([
 export type VoiceTranscriptionDestination = typeof VoiceTranscriptionDestination.Type;
 
 export const ClientSettingsSchema = Schema.Struct({
+  settleSounds: settleSoundsSetting,
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
+  ),
+  soundPack: SoundPackId.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_SOUND_PACK))),
+  soundVolume: SoundVolume.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_SOUND_VOLUME))),
+  soundFocusPolicy: SoundFocusPolicy.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SOUND_FOCUS_POLICY)),
+  ),
+  // Sparse per-event enable/disable overrides. Missing keys fall back to DEFAULT_SOUND_EVENT_ENABLED.
+  soundEvents: SoundEventOverrides.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Sparse per-event volume overrides (0-100). Missing keys inherit soundVolume.
+  soundEventVolumes: SoundEventVolumeOverrides.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Saved UI theme + sound pack + settle sound pairings.
+  soundThemeConfigs: Schema.Array(SoundThemeConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
   ),
   inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   diffColorScheme: DiffColorScheme.pipe(
@@ -469,6 +600,7 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_QUIT_CONFIRMATION_MODE)),
   ),
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   confirmThreadUnpin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   diffFilesCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -1348,6 +1480,11 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+const UsageHistoryRetentionDays = Schema.Union([
+  Schema.Int.check(Schema.isGreaterThan(0)),
+  Schema.Literal("unlimited"),
+]);
+
 const CloudSpeechCredential = SettingsSecretValue.pipe(
   Schema.withDecodingDefault(Effect.succeed("")),
 );
@@ -1390,6 +1527,8 @@ export const ServerSettings = Schema.Struct({
   ),
 
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Lets clients reach this machine's loopback ports over `/api/preview/tunnel`. */
+  enablePreviewTunnel: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   cloudSpeechCredentials: CloudSpeechCredentials.pipe(
     Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
   ),
@@ -1581,6 +1720,10 @@ export const ServerSettings = Schema.Struct({
   ),
   secretProviders: Schema.Record(SecretProviderId, SecretProviderConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+
+  usageHistoryRetentionDays: UsageHistoryRetentionDays.pipe(
+    Schema.withDecodingDefault(Effect.succeed(92)),
   ),
 
   usagePriceOverrides: Schema.Record(TrimmedNonEmptyString, UsageModelPriceOverride).pipe(
@@ -1848,6 +1991,7 @@ export const ServerSettingsPatch = Schema.Struct({
   keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
   requireConnectDeviceApproval: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
+  enablePreviewTunnel: Schema.optionalKey(Schema.Boolean),
   cloudSpeechCredentials: Schema.optionalKey(
     Schema.Struct({
       openai: Schema.optionalKey(SettingsSecretValue),
@@ -1971,6 +2115,8 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Record(SecretProviderId, Schema.NullOr(SecretProviderConfigWrite)),
   ),
 
+  usageHistoryRetentionDays: Schema.optionalKey(UsageHistoryRetentionDays),
+
   usagePriceOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(UsageModelPriceOverride)),
   ),
@@ -1994,7 +2140,7 @@ export function requiredScopesForServerSettingsPatch(
   let changesAccess = false;
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
-    if (key === "requireConnectDeviceApproval") {
+    if (key === "requireConnectDeviceApproval" || key === "enablePreviewTunnel") {
       changesAccess = true;
     } else if (
       key === "providers" ||
@@ -2008,6 +2154,8 @@ export function requiredScopesForServerSettingsPatch(
       changesSettings = true;
     }
   }
+  // A reference can name any secret the store holds; choosing where one goes is provider authority.
+  if (containsSecretReference(patch)) changesProviders = true;
   // Removing a secret provider also clears the settings fields that read from it.
   if (Object.values(patch.secretProviders ?? {}).some((entry) => entry === null)) {
     changesSettings = true;
@@ -2033,7 +2181,14 @@ export function requiredScopesForProjectMutation(
 }
 
 export const ClientSettingsPatch = Schema.Struct({
+  settleSounds: Schema.optionalKey(SettleSoundSettings),
   notificationMode: Schema.optionalKey(NotificationMode),
+  soundPack: Schema.optionalKey(SoundPackId),
+  soundVolume: Schema.optionalKey(SoundVolume),
+  soundFocusPolicy: Schema.optionalKey(SoundFocusPolicy),
+  soundEvents: Schema.optionalKey(SoundEventOverrides),
+  soundEventVolumes: Schema.optionalKey(SoundEventVolumeOverrides),
+  soundThemeConfigs: Schema.optionalKey(Schema.Array(SoundThemeConfig)),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   chatWidth: Schema.optionalKey(ChatWidth),
@@ -2056,6 +2211,7 @@ export const ClientSettingsPatch = Schema.Struct({
   browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
   confirmQuit: Schema.optionalKey(QuitConfirmationMode),
   confirmThreadArchive: Schema.optionalKey(Schema.Boolean),
+  confirmTerminalClose: Schema.optionalKey(Schema.Boolean),
   confirmThreadDelete: Schema.optionalKey(Schema.Boolean),
   confirmThreadUnpin: Schema.optionalKey(Schema.Boolean),
   diffFilesCollapsed: Schema.optionalKey(Schema.Boolean),

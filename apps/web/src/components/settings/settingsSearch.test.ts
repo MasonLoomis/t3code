@@ -6,6 +6,7 @@ import {
 } from "@t3tools/contracts";
 import { UNKNOWN_SOURCE_CONTROL_CLIENT } from "@t3tools/client-runtime/source-control-clients";
 import * as Schema from "effect/Schema";
+import { decodeMsg } from "gt-react";
 
 import {
   filterAvailableSettingsSearchItems,
@@ -336,7 +337,7 @@ describe("source control host search items", () => {
 
   it("lists a host by its label, its keywords, and its settings fields", () => {
     const items = sourceControlHostSearchItems([UNKNOWN_SOURCE_CONTROL_CLIENT, definition]);
-    expect(items.map((item) => item.title)).toEqual(["Example credentials"]);
+    expect(items.map((item) => decodeMsg(item.title))).toEqual(["Example credentials"]);
     expect(searchSettings("sample apitoken", items).map((item) => item.id)).toEqual([
       sourceControlHostSettingsSearchId("example"),
     ]);
@@ -356,7 +357,7 @@ describe("source control host search items", () => {
         },
       },
     ]);
-    expect(items.map((item) => item.title)).toEqual(["Example accounts and token"]);
+    expect(items.map((item) => decodeMsg(item.title))).toEqual(["Example accounts and token"]);
     expect(searchSettings("ex switch accounts", items)).toHaveLength(1);
   });
 
@@ -385,6 +386,20 @@ describe("movedSettingsPath", () => {
     expect(movedSettingsPath("/settings/storage", "")).toBe("/settings/maintenance");
     expect(movedSettingsPath("/settings/integrations", "devices")).toBe("/settings/devices");
     expect(movedSettingsPath("/settings/beta", "")).toBe("/settings/labs");
+    expect(movedSettingsPath("/settings/general", "settle-sounds")).toBe("/settings/sounds");
+    expect(movedSettingsPath("/settings/general", "notification-sound-pack")).toBe(
+      "/settings/sounds",
+    );
+  });
+
+  it("places Sounds between Keybindings and Voice in the settings sidebar", () => {
+    const paths = SETTINGS_NAV_GROUPS.flatMap((group) => group.paths);
+    const keybindingsIndex = paths.indexOf("/settings/keybindings");
+    const soundsIndex = paths.indexOf("/settings/sounds");
+    const voiceIndex = paths.indexOf("/settings/voice");
+    expect(keybindingsIndex).toBeGreaterThanOrEqual(0);
+    expect(soundsIndex).toBe(keybindingsIndex + 1);
+    expect(voiceIndex).toBe(soundsIndex + 1);
   });
 
   it("leaves current pages alone", () => {
