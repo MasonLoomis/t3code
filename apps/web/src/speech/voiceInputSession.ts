@@ -206,7 +206,18 @@ export class VoiceInputSession {
     this.controller = new VoiceInputController({
       resolve: m,
       retryFailedRecording: true,
-      recorder: platform.recorder,
+      recorder: {
+        get uri() {
+          return platform.recorder.uri;
+        },
+        prepareToRecordAsync: async (signal) => {
+          await playVoiceSound("voice-start", getClientSettings, signal);
+          signal?.throwIfAborted();
+          await platform.recorder.prepareToRecordAsync(signal);
+        },
+        record: (options) => platform.recorder.record(options),
+        stop: () => platform.recorder.stop(),
+      },
       getTranscriber: () => platform.transcriber,
       requestPermission: async () => ({ granted: true, canAskAgain: true }),
       configureRecording: async () => undefined,
@@ -234,20 +245,14 @@ export class VoiceInputSession {
         const earcon =
           state.error !== null && state.error !== previous.error
             ? "voice-error"
-            : recording && !wasRecording
-              ? "voice-start"
-              : wasRecording && !recording && state.error === null
-                ? "voice-stop"
-                : null;
+            : wasRecording && !recording && state.error === null
+              ? "voice-stop"
+              : null;
         const recordingStartedAt =
           state.phase !== "recording" ? null : (this.snapshot.recordingStartedAt ?? Date.now());
         this.publish({ ...this.snapshot, state, recordingStartedAt });
         if (earcon) {
-          void playVoiceSound(earcon, () =>
-            this.disposed || (earcon === "voice-start" && this.snapshot.state.phase !== "recording")
-              ? undefined
-              : getClientSettings(),
-          );
+          void playVoiceSound(earcon, () => (this.disposed ? undefined : getClientSettings()));
         }
         if (state.phase !== "recording" && state.phase !== "transcribing")
           this.publishActivity(SILENT_ACTIVITY);

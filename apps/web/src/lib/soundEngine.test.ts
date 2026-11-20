@@ -2,14 +2,16 @@ import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
 const { synthesized, readClip } = vi.hoisted(() => ({
-  synthesized: vi.fn(() => 0.6),
+  synthesized: vi
+    .fn<typeof import("./soundSynthesizer").playSynthesizedSound>()
+    .mockReturnValue(0.6),
   readClip: vi.fn(),
 }));
 vi.mock("./soundSynthesizer", () => ({ playSynthesizedSound: synthesized }));
 vi.mock("./customSoundStore", () => ({ readCustomSound: readClip }));
 
 const playing = { time: 0, samples: 0, disconnected: 0, gains: [] as number[] };
-class TestAudioContext {
+class TestAudioContext extends EventTarget {
   state = "running";
   destination = {};
   get currentTime() {
@@ -135,12 +137,42 @@ it("rechecks notification eligibility before playback and keeps opted-out events
   await vi.runAllTimersAsync();
   await playVoiceSound("voice-start", defaults);
   expect(synthesized).not.toHaveBeenCalled();
-  await playVoiceSound("voice-start", () => ({
+  await playVoiceSound("voice-error", () => ({
     ...defaults(),
-    soundEvents: { "voice-start": true },
+    soundEvents: { "voice-error": true },
   }));
   expect(synthesized).toHaveBeenCalledTimes(1);
 });
+
+it.each(["ended", "aborted"] as const)(
+  "waits until the dictation start sound has %s",
+  async (reason) => {
+    const { unlockSoundAudio, playVoiceSound } = await import("./soundEngine");
+    unlockSoundAudio();
+    const controller = new AbortController();
+    const started = Promise.withResolvers<() => void>();
+    synthesized.mockImplementationOnce((_context, _destination, _pack, _event, ended) => {
+      started.resolve(ended);
+      return 0.6;
+    });
+    const finished = vi.fn();
+    const playingCue = playVoiceSound(
+      "voice-start",
+      () => ({
+        ...defaults(),
+        soundEvents: { "voice-start": true },
+      }),
+      controller.signal,
+    ).then(finished);
+    const ended = await started.promise;
+    expect(finished).not.toHaveBeenCalled();
+    if (reason === "ended") ended();
+    else controller.abort();
+    await playingCue;
+    expect(finished).toHaveBeenCalledOnce();
+    expect(playing.disconnected).toBe(1);
+  },
+);
 
 it("stops a playing voice cue and discards a pending cue when a new recording starts", async () => {
   const { unlockSoundAudio, playVoiceSound, setDictationRecording } = await import("./soundEngine");

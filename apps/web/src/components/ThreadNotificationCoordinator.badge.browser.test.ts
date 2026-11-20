@@ -297,18 +297,25 @@ it("presents completion notifications and sound as soon as the shell completes",
   expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
 });
 
-it("plays the opt-in all-done cue only after the last running thread across connected environments finishes", async () => {
-  await using app = setup();
-  state.mode = "sound";
-  state.allDone = true;
-  app.start();
-  const completed = shell({
-    latestTurn: { turnId: "turn", state: "completed", completedAt: "2026-09-13T07:00:01.000Z" },
-  });
-  state.shells.set("one", completed);
-  state.shells.set("two", completed);
-  expect(state.sound.mock.calls.map(([event]) => event)).toEqual(["completion", "all-done"]);
-});
+it.each([
+  { other: "live", expected: ["completion", "all-done"] },
+  { other: "cached", expected: ["all-done"] },
+])(
+  "plays all-done when the last live thread finishes with the other environment $other",
+  async ({ other, expected }) => {
+    await using app = setup();
+    state.mode = "sound";
+    state.allDone = true;
+    app.start();
+    if (other === "cached") state.shells.set("two", { ...shell(), status: other });
+    const completed = shell({
+      latestTurn: { turnId: "turn", state: "completed", completedAt: "2026-09-13T07:00:01.000Z" },
+    });
+    state.shells.set("one", completed);
+    if (other === "live") state.shells.set("two", completed);
+    expect(state.sound.mock.calls.map(([event]) => event)).toEqual(expected);
+  },
+);
 
 it.each([false, true])(
   "presents one completion when a monitor ends with a final wake (disconnected: %s)",

@@ -377,6 +377,7 @@ export function startThreadNotifications(
           return;
         }
         entry.reconnecting = true;
+        entry.running = 0;
         entry.gate.pause();
       },
       { immediate: true },

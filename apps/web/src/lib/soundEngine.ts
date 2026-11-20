@@ -167,6 +167,7 @@ function play(
   output: AudioOutput,
   volume: number,
   schedule: (destination: AudioNode, ended: () => void) => number,
+  onStop?: () => void,
 ): Playback {
   const { context, master } = output;
   master.gain.value = volume / 100;
@@ -177,6 +178,7 @@ function play(
     if (!connected) return;
     connected = false;
     channel.disconnect();
+    onStop?.();
   };
   try {
     return { stop, endsAt: context.currentTime + schedule(channel, stop) };
@@ -206,11 +208,16 @@ function playEvent(
   pack: SoundPackId,
   volume: number,
   buffer?: AudioBuffer,
+  onStop?: () => void,
 ): Playback {
-  return play(output, volume, (destination, ended) =>
-    buffer
-      ? playBuffer(output.context, destination, buffer, ended)
-      : playSynthesizedSound(output.context, destination, pack, event, ended),
+  return play(
+    output,
+    volume,
+    (destination, ended) =>
+      buffer
+        ? playBuffer(output.context, destination, buffer, ended)
+        : playSynthesizedSound(output.context, destination, pack, event, ended),
+    onStop,
   );
 }
 
@@ -282,6 +289,7 @@ export function queueNotificationSound(
 export async function playVoiceSound(
   event: VoiceEvent,
   read: () => SoundSettings | undefined,
+  signal?: AbortSignal,
 ): Promise<void> {
   const output = audio;
   const settings = eligible(event, read);
@@ -289,7 +297,8 @@ export async function playVoiceSound(
     !output ||
     !settings ||
     output.context.state !== "running" ||
-    (event !== "voice-start" && recordingSessions.size > 0)
+    recordingSessions.size > 0 ||
+    signal?.aborted
   )
     return;
   const sequence = ++voiceSequence;
@@ -300,10 +309,36 @@ export async function playVoiceSound(
       sequence === voiceSequence &&
       current &&
       current.soundPack === settings.soundPack &&
-      output.context.state === "running"
+      output.context.state === "running" &&
+      !signal?.aborted
     ) {
       activeVoice?.stop();
-      activeVoice = playEvent(output, event, current.soundPack, current.soundVolume, buffer);
+      if (event !== "voice-start") {
+        activeVoice = playEvent(output, event, current.soundPack, current.soundVolume, buffer);
+        return;
+      }
+      const finished = Promise.withResolvers<void>();
+      const { context } = output;
+      activeVoice = playEvent(
+        output,
+        event,
+        current.soundPack,
+        current.soundVolume,
+        buffer,
+        finished.resolve,
+      );
+      const stop = activeVoice.stop;
+      const onStateChange = () => {
+        if (context.state !== "running") stop();
+      };
+      signal?.addEventListener("abort", stop, { once: true });
+      context.addEventListener("statechange", onStateChange);
+      try {
+        await finished.promise;
+      } finally {
+        signal?.removeEventListener("abort", stop);
+        context.removeEventListener("statechange", onStateChange);
+      }
     }
   } catch {
     // An unavailable earcon must not interrupt dictation.
