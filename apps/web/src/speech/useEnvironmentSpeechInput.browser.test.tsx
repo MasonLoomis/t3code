@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   selectionFails: false,
   platforms: [] as string[],
   microphoneRequests: [] as string[],
+  startCue: vi.fn<() => Promise<void>>(),
   transcribeCalls: [] as string[],
   cleanupCalls: [] as string[],
   cleanupDraft: vi.fn(),
@@ -120,6 +121,12 @@ vi.mock("../hooks/useSettings", () => ({
     }),
 }));
 vi.mock("./runEnvironmentSpeech", () => ({ runEnvironmentSpeech: Effect.runPromise }));
+vi.mock(import("../lib/soundEngine"), async (original) => ({
+  ...(await original()),
+  playVoiceSound: async (event) => {
+    if (event === "voice-start") await mocks.startCue();
+  },
+}));
 vi.mock("../components/ui/toast", () => ({ toastManager: { add: vi.fn() } }));
 vi.mock("@t3tools/client-runtime/voice-input", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@t3tools/client-runtime/voice-input")>()),
@@ -249,6 +256,8 @@ function setup(options: { readonly destination?: string | null } = {}) {
   mocks.selectionFails = false;
   mocks.platforms = [];
   mocks.microphoneRequests = [];
+  mocks.startCue.mockReset();
+  mocks.startCue.mockResolvedValue(undefined);
   mocks.transcribeCalls = [];
   mocks.cleanupCalls = [];
   mocks.cleanupDraft.mockClear();
@@ -363,6 +372,32 @@ it.each([true, false])(
     expect(mocks.committed).toHaveBeenCalledExactlyOnceWith("dictated", expect.anything());
   },
 );
+
+it("waits for the enabled start cue to finish before opening the microphone", async () => {
+  setup({ destination: "env-a" });
+  mocks.settings = { soundEvents: { "voice-start": true } };
+  await using _screen = await render(<Probe />);
+  const cueStarted = Promise.withResolvers<void>();
+  const cueFinished = Promise.withResolvers<void>();
+  mocks.startCue.mockImplementationOnce(() => {
+    cueStarted.resolve();
+    return cueFinished.promise;
+  });
+  let start: Promise<void> | undefined;
+  await act(() => {
+    start = mocks.voice.start();
+  });
+  try {
+    await Promise.race([cueStarted.promise, start]);
+    expect(mocks.startCue).toHaveBeenCalledOnce();
+    expect(mocks.microphoneRequests).toEqual([]);
+  } finally {
+    cueFinished.resolve();
+    await act(() => start);
+  }
+  expect(mocks.microphoneRequests).toEqual(["env-a"]);
+  await act(() => mocks.voice.cancel());
+});
 
 it.each([
   ["is disconnected", () => mocks.connected.delete("env-a")],
