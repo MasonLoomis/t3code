@@ -3,13 +3,19 @@
 // (auto-settle after a merge or idle days, an agent organizing threads, another device) plays
 // `automaticSound`. Files come from `<T3 home>/userdata/sounds` on the primary server. See FORK.md.
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
-import { resolveSoundVolume, type ClientSettings } from "@t3tools/contracts/settings";
+import {
+  resolveSoundVolume,
+  SETTLE_SOUND_PACK_DEFAULT,
+  type ClientSettings,
+  type SoundPackId,
+} from "@t3tools/contracts/settings";
 import * as Option from "effect/Option";
 import type { AtomRegistry } from "effect/reactivity";
 
 import { readDesktopPrimaryBearerToken } from "../environments/primary/desktopAuth";
 import { resolvePrimaryEnvironmentHttpUrl } from "../environments/primary/target";
 import { getClientSettings, subscribeClientSettings } from "../hooks/useSettings";
+import { playPackSynthesizedEvent } from "../lib/soundEngine";
 import { environmentSummaries } from "../state/presentation";
 import { environmentShell } from "../state/shell";
 import {
@@ -85,13 +91,24 @@ function soundObjectUrl(name: string): Promise<string | null> {
   return cached;
 }
 
-/** Plays one sound file at a volume from 0 to 1. Missing files and blocked playback are silent. */
-export function previewSettleSound(name: string, volume: number): void {
-  if (name.length === 0) return;
+/** Plays a settle sound (either the active sound pack's cue or a file from `userdata/sounds`) at 0..1 volume. */
+export function previewSettleSound(
+  name: string,
+  volume: number,
+  options?: { readonly kind?: SettleSoundKind; readonly pack?: SoundPackId },
+): void {
+  const clamped = Math.min(1, Math.max(0, volume));
+  if (name.length === 0 || clamped <= 0) return;
+  if (name === SETTLE_SOUND_PACK_DEFAULT) {
+    const event = options?.kind === "automatic" ? "settle-automatic" : "settle-manual";
+    const pack = options?.pack ?? getClientSettings().soundPack;
+    void playPackSynthesizedEvent(event, pack, Math.round(clamped * 100));
+    return;
+  }
   void soundObjectUrl(name).then((url) => {
     if (url === null) return;
     const audio = new Audio(url);
-    audio.volume = Math.min(1, Math.max(0, volume));
+    audio.volume = clamped;
     void audio.play().catch(() => undefined);
   });
 }
@@ -100,16 +117,18 @@ let lastPlayedAt = 0;
 
 function playSettleSound(kind: SettleSoundKind, settings: ClientSettings["settleSounds"]): void {
   if (!settings.enabled) return;
+  const clientSettings = getClientSettings();
   const volume =
-    resolveSoundVolume(
-      kind === "manual" ? "settle-manual" : "settle-automatic",
-      getClientSettings(),
-    ) / 100;
+    resolveSoundVolume(kind === "manual" ? "settle-manual" : "settle-automatic", clientSettings) /
+    100;
   if (volume <= 0) return;
   const now = Date.now();
   if (now - lastPlayedAt < MIN_GAP_MS) return;
   lastPlayedAt = now;
-  previewSettleSound(kind === "manual" ? settings.manualSound : settings.automaticSound, volume);
+  previewSettleSound(kind === "manual" ? settings.manualSound : settings.automaticSound, volume, {
+    kind,
+    pack: clientSettings.soundPack,
+  });
 }
 
 const manualClaims = new Map<string, Map<ThreadId, number>>();
