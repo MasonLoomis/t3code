@@ -569,6 +569,7 @@ describe("sound settings", () => {
     expect(defaults.soundThemeConfigs).toEqual([]);
     expect(defaults.settleSounds.manualSound).toBe(SETTLE_SOUND_PACK_DEFAULT);
     expect(defaults.settleSounds.automaticSound).toBe(SETTLE_SOUND_PACK_DEFAULT);
+    expect(defaults.settleSounds.unsettleSound).toBe(SETTLE_SOUND_PACK_DEFAULT);
     expect(resolveSoundVolume("completion", defaults)).toBe(80);
     expect(
       resolveSoundVolume("settle-manual", {
@@ -576,6 +577,12 @@ describe("sound settings", () => {
         soundEventVolumes: { "settle-manual": 45 },
       }),
     ).toBe(45);
+    expect(
+      resolveSoundVolume("unsettle", {
+        soundVolume: 80,
+        soundEventVolumes: { unsettle: 65 },
+      }),
+    ).toBe(65);
 
     expect(
       decodeClientSettingsPatch({
@@ -583,7 +590,12 @@ describe("sound settings", () => {
         soundVolume: 65,
         soundFocusPolicy: "background-threads",
         soundEvents: { approval: true, "voice-start": true, completion: false },
-        soundEventVolumes: { approval: 100, "snap-shot": 40, "settle-manual": 55 },
+        soundEventVolumes: {
+          approval: 100,
+          "snap-shot": 40,
+          "settle-manual": 55,
+          unsettle: 70,
+        },
         soundThemeConfigs: [
           {
             id: "transformers",
@@ -601,7 +613,12 @@ describe("sound settings", () => {
       soundVolume: 65,
       soundFocusPolicy: "background-threads",
       soundEvents: { approval: true, "voice-start": true, completion: false },
-      soundEventVolumes: { approval: 100, "snap-shot": 40, "settle-manual": 55 },
+      soundEventVolumes: {
+        approval: 100,
+        "snap-shot": 40,
+        "settle-manual": 55,
+        unsettle: 70,
+      },
       soundThemeConfigs: [
         {
           id: "transformers",
@@ -610,6 +627,7 @@ describe("sound settings", () => {
           soundPack: "retro",
           settleManualSound: "Transformers-G1-Scene-Transition.wav",
           settleAutomaticSound: "Transformers-G1-Transformation.wav",
+          unsettleSound: SETTLE_SOUND_PACK_DEFAULT,
           autoApplyWithTheme: true,
         },
       ],

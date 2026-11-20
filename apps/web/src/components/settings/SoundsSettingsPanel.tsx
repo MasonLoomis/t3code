@@ -105,6 +105,7 @@ interface SoundThemeDraft {
   readonly soundPack: SoundPackId;
   readonly settleManualSound: string;
   readonly settleAutomaticSound: string;
+  readonly unsettleSound: string;
   readonly autoApplyWithTheme: boolean;
 }
 
@@ -300,14 +301,23 @@ function SoundThemeConfigsSection(props: {
   const describeSettle = (config: SoundThemeConfig) => {
     if (
       config.settleManualSound === SETTLE_SOUND_PACK_DEFAULT &&
-      config.settleAutomaticSound === SETTLE_SOUND_PACK_DEFAULT
+      config.settleAutomaticSound === SETTLE_SOUND_PACK_DEFAULT &&
+      config.unsettleSound === SETTLE_SOUND_PACK_DEFAULT
     ) {
       return gt("Pack settle sounds");
     }
-    if (config.settleManualSound === "" && config.settleAutomaticSound === "") {
+    if (
+      config.settleManualSound === "" &&
+      config.settleAutomaticSound === "" &&
+      config.unsettleSound === ""
+    ) {
       return gt("Settle sounds off");
     }
-    if (config.settleManualSound === config.settleAutomaticSound && config.settleManualSound) {
+    if (
+      config.settleManualSound === config.settleAutomaticSound &&
+      config.settleManualSound === config.unsettleSound &&
+      config.settleManualSound
+    ) {
       return config.settleManualSound;
     }
     return gt("Custom settle sounds");
@@ -321,6 +331,7 @@ function SoundThemeConfigsSection(props: {
       soundPack,
       settleManualSound: settleSounds.manualSound,
       settleAutomaticSound: settleSounds.automaticSound,
+      unsettleSound: settleSounds.unsettleSound,
       autoApplyWithTheme: true,
     });
   };
@@ -333,6 +344,7 @@ function SoundThemeConfigsSection(props: {
       soundPack: config.soundPack,
       settleManualSound: config.settleManualSound,
       settleAutomaticSound: config.settleAutomaticSound,
+      unsettleSound: config.unsettleSound,
       autoApplyWithTheme: config.autoApplyWithTheme,
     });
   };
@@ -348,6 +360,7 @@ function SoundThemeConfigsSection(props: {
       soundPack: draft.soundPack,
       settleManualSound: draft.settleManualSound,
       settleAutomaticSound: draft.settleAutomaticSound,
+      unsettleSound: draft.unsettleSound,
       autoApplyWithTheme: draft.autoApplyWithTheme,
     };
     const nextConfigs =
@@ -545,7 +558,17 @@ function SoundThemeConfigsSection(props: {
                 onChange={(settleAutomaticSound) => setDraft({ ...draft, settleAutomaticSound })}
               />
             </div>
-            <div className="flex items-end">
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-foreground">{gt("Unsettle sound")}</div>
+              <SettleSoundPicker
+                label={gt("Config unsettle sound")}
+                value={draft.unsettleSound}
+                packLabel={m(SOUND_PACK_LABELS[draft.soundPack])}
+                available={props.availableSettleSounds}
+                onChange={(unsettleSound) => setDraft({ ...draft, unsettleSound })}
+              />
+            </div>
+            <div className="flex items-end sm:col-span-2">
               <label className="flex cursor-pointer items-center gap-2 py-1.5 text-sm text-foreground">
                 <Switch
                   size="sm"
@@ -750,6 +773,10 @@ export function SoundsSettingsPanel() {
     soundVolume: masterVolume,
     soundEventVolumes,
   });
+  const unsettleVolume = resolveSoundVolume("unsettle", {
+    soundVolume: masterVolume,
+    soundEventVolumes,
+  });
   const snapShotVolume = resolveSoundVolume("snap-shot", {
     soundVolume: masterVolume,
     soundEventVolumes,
@@ -904,7 +931,7 @@ export function SoundsSettingsPanel() {
         <SettingsRow
           {...setting("settle-sounds")}
           description={gt(
-            "Play a sound when a thread settles. Also in the chat header. Defaults follow your sound pack; saved files live in the sounds folder inside your T3 Code data folder.",
+            "Play a sound when a thread settles or unsettles. Also in the chat header. Defaults follow your sound pack; saved files live in the sounds folder inside your T3 Code data folder.",
           )}
           devicePreference
           control={
@@ -993,6 +1020,51 @@ export function SoundsSettingsPanel() {
                 onClick={() =>
                   previewSettleSound(settleSounds.automaticSound, automaticSettleVolume / 100, {
                     kind: "automatic",
+                    pack,
+                  })
+                }
+              >
+                <PlayIcon aria-hidden />
+                {gt("Play")}
+              </Button>
+            </div>
+          }
+        />
+        <SettingsRow
+          {...setting("settle-sound-unsettle")}
+          description={gt(
+            "Plays when a settled thread wakes back up: when you unsettle it, send a message, or another device or agent unsettles it.",
+          )}
+          devicePreference
+          control={
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <SettleSoundPicker
+                label={gt("Unsettle sound")}
+                value={settleSounds.unsettleSound}
+                packLabel={packLabel}
+                available={availableSettleSounds}
+                onChange={(unsettleSound) => saveSettle({ unsettleSound })}
+              />
+              <EventVolumeControl
+                event="unsettle"
+                label={gt("When a thread unsettles")}
+                masterVolume={masterVolume}
+                overrideVolume={soundEventVolumes.unsettle}
+                onPreview={(volume) =>
+                  previewSettleSound(settleSounds.unsettleSound, volume / 100, {
+                    kind: "unsettle",
+                    pack,
+                  })
+                }
+              />
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={!settleSounds.unsettleSound || unsettleVolume === 0}
+                aria-label={gt("Play unsettle sound")}
+                onClick={() =>
+                  previewSettleSound(settleSounds.unsettleSound, unsettleVolume / 100, {
+                    kind: "unsettle",
                     pack,
                   })
                 }

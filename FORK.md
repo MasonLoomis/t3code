@@ -16,16 +16,17 @@ issue against `pingdotgg/t3code` from this fork.
   volume by default and can set its own unique sound and volume override. The command palette can
   mute notification sounds and switch packs, and custom uploaded clips can be exported/imported as
   a JSON pack.
-- **Settle sounds.** Settling a thread yourself plays one sound. A thread that settles any other
-  way plays a second sound: auto-settle after a pull request merges or after the idle-days limit,
-  an agent settling threads (for example with `t3_thread_organize`), or a settle from another
-  device. By default both settle cues match your active sound pack; **Settings → Sounds** also
-  lets you pick any saved file from `%USERPROFILE%\.t3\userdata\sounds` (or Off) and set per-sound
-  volume overrides. The speaker button in the chat header turns settle sounds on and off.
+- **Settle sounds.** Settling a thread yourself plays one sound, a thread settling any other way
+  plays a second sound (auto-settle after a pull request merges or after the idle-days limit, an
+  agent settling threads such as with `t3_thread_organize`, or a settle from another device), and a
+  settled thread waking back up (unsettling) plays a brighter ascending cue. By default all three
+  cues match your active sound pack; **Settings → Sounds** also lets you pick any saved file from
+  `%USERPROFILE%\.t3\userdata\sounds` (or Off) and set per-sound volume overrides. The speaker
+  button in the chat header turns settle sounds on and off.
 - **Theme & sound configs.** **Settings → Sounds → Theme & sound configs** lets you pair any UI
-  theme (built-in or custom) with a sound pack and settle sounds (for example, a Transformers
-  theme paired with saved Transformers `.wav` settle sounds). Configs can be applied in one click
-  from Settings or the command palette, or linked to auto-apply whenever you switch to that UI
+  theme (built-in or custom) with a sound pack and settle/unsettle sounds (for example, a
+  Transformers theme paired with saved Transformers `.wav` sounds). Configs can be applied in one
+  click from Settings or the command palette, or linked to auto-apply whenever you switch to that UI
   theme.
 - **Your own sound files.** Saved settle sound files live in `%USERPROFILE%\.t3\userdata\sounds`
   (`.wav`, `.mp3`, `.ogg`, `.m4a`, `.flac`, `.webm`, up to 20 MB), so files like
@@ -40,7 +41,8 @@ issue against `pingdotgg/t3code` from this fork.
 How a settle is classified: `useThreadActions.settleThread` is the one path every manual settle
 in the app takes (sidebar, menus, keybinding, command palette). It claims the thread and plays the
 manual sound once the server accepts. The app also watches every environment's live thread list;
-a thread that becomes settled without a claim from this window plays the automatic sound.
+a thread that becomes settled without a claim from this window plays the automatic sound, and a
+settled thread that transitions back to active (unsettled, not archived) plays the unsettle sound.
 
 ## Branches and tags
 

@@ -21,7 +21,8 @@ export function isSoundThemeConfigActive(
     config.themeId === currentThemeId &&
     config.soundPack === settings.soundPack &&
     config.settleManualSound === settings.settleSounds.manualSound &&
-    config.settleAutomaticSound === settings.settleSounds.automaticSound
+    config.settleAutomaticSound === settings.settleSounds.automaticSound &&
+    config.unsettleSound === settings.settleSounds.unsettleSound
   );
 }
 
@@ -42,11 +43,13 @@ export async function applySoundThemeConfig(
       ...current.settleSounds,
       manualSound: config.settleManualSound,
       automaticSound: config.settleAutomaticSound,
+      unsettleSound: config.unsettleSound,
     };
     const needsSoundUpdate =
       current.soundPack !== config.soundPack ||
       current.settleSounds.manualSound !== nextSettleSounds.manualSound ||
-      current.settleSounds.automaticSound !== nextSettleSounds.automaticSound;
+      current.settleSounds.automaticSound !== nextSettleSounds.automaticSound ||
+      current.settleSounds.unsettleSound !== nextSettleSounds.unsettleSound;
     if (needsSoundUpdate) {
       await updateClientSettings({
         soundPack: config.soundPack,

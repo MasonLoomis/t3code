@@ -14,6 +14,7 @@ const TRANSFORMERS: SoundThemeConfig = {
   soundPack: "retro",
   settleManualSound: "Transformers-G1-Scene-Transition.wav",
   settleAutomaticSound: "Transformers-G1-Transformation.wav",
+  unsettleSound: SETTLE_SOUND_PACK_DEFAULT,
   autoApplyWithTheme: true,
 };
 
@@ -24,6 +25,7 @@ const GALACTIC: SoundThemeConfig = {
   soundPack: "galactic",
   settleManualSound: SETTLE_SOUND_PACK_DEFAULT,
   settleAutomaticSound: SETTLE_SOUND_PACK_DEFAULT,
+  unsettleSound: SETTLE_SOUND_PACK_DEFAULT,
   autoApplyWithTheme: false,
 };
 
@@ -44,6 +46,7 @@ describe("soundThemeLinks", () => {
           ...DEFAULT_CLIENT_SETTINGS.settleSounds,
           manualSound: "Transformers-G1-Scene-Transition.wav",
           automaticSound: "Transformers-G1-Transformation.wav",
+          unsettleSound: SETTLE_SOUND_PACK_DEFAULT,
         },
       }),
     ).toBe(true);
@@ -55,6 +58,19 @@ describe("soundThemeLinks", () => {
           ...DEFAULT_CLIENT_SETTINGS.settleSounds,
           manualSound: "Transformers-G1-Scene-Transition.wav",
           automaticSound: "Transformers-G1-Transformation.wav",
+          unsettleSound: SETTLE_SOUND_PACK_DEFAULT,
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      isSoundThemeConfigActive(TRANSFORMERS, "transformers", {
+        soundPack: "retro",
+        settleSounds: {
+          ...DEFAULT_CLIENT_SETTINGS.settleSounds,
+          manualSound: "Transformers-G1-Scene-Transition.wav",
+          automaticSound: "Transformers-G1-Transformation.wav",
+          unsettleSound: "",
         },
       }),
     ).toBe(false);
