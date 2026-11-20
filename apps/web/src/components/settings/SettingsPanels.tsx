@@ -124,7 +124,6 @@ import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./IntegrationsSettings";
 import { StorageCleanupSections } from "./StorageSettings";
-import { SettleSoundSettingsSection } from "../../fork/SettleSoundSettings";
 import { UpdateTrackSwitchDialog } from "./UpdateTrackSwitchDialog";
 import { environmentIdsKey } from "~/state/environmentAtomList";
 import { environmentSessionStatesAtom } from "~/state/session";
@@ -542,6 +541,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? [gt("When notification sounds play")]
       : []),
     ...(Object.keys(settings.soundEvents).length > 0 ? [gt("Sounds by event")] : []),
+    ...(Object.keys(settings.soundEventVolumes).length > 0 ? [gt("Per-sound volumes")] : []),
+    ...(!Equal.equals(settings.settleSounds, DEFAULT_UNIFIED_SETTINGS.settleSounds)
+      ? [gt("Settle sounds")]
+      : []),
     ...(settings.inAppNotificationsEnabled !== DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled
       ? [gt("In-app notifications")]
       : []),
@@ -729,6 +732,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       soundVolume: DEFAULT_UNIFIED_SETTINGS.soundVolume,
       soundFocusPolicy: DEFAULT_UNIFIED_SETTINGS.soundFocusPolicy,
       soundEvents: DEFAULT_UNIFIED_SETTINGS.soundEvents,
+      soundEventVolumes: DEFAULT_UNIFIED_SETTINGS.soundEventVolumes,
+      settleSounds: DEFAULT_UNIFIED_SETTINGS.settleSounds,
       inAppNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       persistComposerContextStrip: DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip,
@@ -887,9 +892,18 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+        <SettingsRow
+          title={gt("Sounds")}
+          description={gt(
+            "Configure sound packs, master volume, settle sounds, and per-event audio.",
+          )}
+          control={
+            <Button size="sm" variant="outline" render={<Link to="/settings/sounds" />}>
+              {gt("Open Sounds")}
+            </Button>
+          }
+        />
       </SettingsSection>
-
-      <SettleSoundSettingsSection />
 
       <SettingsSection id="sidebar" title={gt("Sidebar")}>
         <SettingsRow

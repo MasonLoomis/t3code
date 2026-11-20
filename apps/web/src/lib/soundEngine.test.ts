@@ -213,3 +213,31 @@ it("applies all three focus rules to the foreground, another thread, and an unfo
     targets.map(([focused, viewing]) => soundAllowedByFocus("unfocused", focused, viewing)),
   ).toEqual([false, false, true]);
 });
+
+it("applies per-event volume overrides while defaulting other events to master volume", async () => {
+  const { unlockSoundAudio, queueNotificationSound } = await import("./soundEngine");
+  unlockSoundAudio(true);
+  queueNotificationSound("completion", () => ({
+    ...defaults(),
+    soundVolume: 80,
+    soundEventVolumes: { completion: 25 },
+  }));
+  await vi.runAllTimersAsync();
+  playing.time += 1;
+  queueNotificationSound("input", () => ({
+    ...defaults(),
+    soundVolume: 80,
+    soundEventVolumes: { completion: 25 },
+  }));
+  await vi.runAllTimersAsync();
+  playing.time += 1;
+  queueNotificationSound("approval", () => ({
+    ...defaults(),
+    soundVolume: 80,
+    soundEventVolumes: { approval: 0 },
+  }));
+  await vi.runAllTimersAsync();
+  expect(playing.samples).toBe(2);
+  expect(synthesized).not.toHaveBeenCalled();
+  expect(playing.gains).toEqual([0.25, 0.8]);
+});

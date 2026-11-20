@@ -1,10 +1,10 @@
-import { SOUND_EVENT_IDS, type SoundEventId } from "@t3tools/contracts/settings";
+import { CUSTOM_SOUND_CLIP_IDS, type CustomSoundClipId } from "@t3tools/contracts/settings";
 import * as Schema from "effect/Schema";
 import { randomUUID } from "./utils";
 
 const MAX_CLIP_BYTES = 1024 * 1024;
 const MAX_BASE64_LENGTH = Math.ceil(MAX_CLIP_BYTES / 3) * 4;
-const MAX_PACK_BYTES = SOUND_EVENT_IDS.length * (MAX_BASE64_LENGTH + 1024);
+const MAX_PACK_BYTES = CUSTOM_SOUND_CLIP_IDS.length * (MAX_BASE64_LENGTH + 1024);
 const FORMATS = new Set(["mp3", "wav", "ogg", "m4a"]);
 const STORE = "sounds";
 
@@ -16,7 +16,7 @@ export class CustomSoundError extends Schema.TaggedError<
 }) {}
 
 interface CustomSoundClip {
-  readonly event: SoundEventId;
+  readonly event: CustomSoundClipId;
   readonly id: string;
   readonly name: string;
   readonly data: ArrayBuffer;
@@ -52,7 +52,9 @@ async function withSounds<A>(
   return request?.result;
 }
 
-export async function readCustomSound(event: SoundEventId): Promise<CustomSoundClip | undefined> {
+export async function readCustomSound(
+  event: CustomSoundClipId,
+): Promise<CustomSoundClip | undefined> {
   return withSounds<CustomSoundClip>("readonly", (store) => store.get(event));
 }
 
@@ -60,7 +62,7 @@ function listClips() {
   return withSounds<CustomSoundClip[]>("readonly", (store) => store.getAll());
 }
 
-export async function listCustomSoundNames(): Promise<Partial<Record<SoundEventId, string>>> {
+export async function listCustomSoundNames(): Promise<Partial<Record<CustomSoundClipId, string>>> {
   return Object.fromEntries(((await listClips()) ?? []).map(({ event, name }) => [event, name]));
 }
 
@@ -85,14 +87,14 @@ function putClips(clips: readonly CustomSoundClip[]) {
   });
 }
 
-export async function saveCustomSound(event: SoundEventId, file: File, decode: DecodeSound) {
+export async function saveCustomSound(event: CustomSoundClipId, file: File, decode: DecodeSound) {
   if (file.size > MAX_CLIP_BYTES) throw new CustomSoundError({ reason: "size" });
   const data = await file.arrayBuffer();
   await validateClip(file.name, data, decode);
   await putClips([{ event, id: randomUUID(), name: file.name, data }]);
 }
 
-export async function resetCustomSound(event: SoundEventId) {
+export async function resetCustomSound(event: CustomSoundClipId) {
   await withSounds("readwrite", (store) => store.delete(event));
 }
 
@@ -128,7 +130,7 @@ export async function importCustomSoundPack(file: File, decode: DecodeSound): Pr
   }
   const clips: CustomSoundClip[] = [];
   for (const [key, entry] of Object.entries(parsed.sounds)) {
-    const event = SOUND_EVENT_IDS.find((event) => event === key);
+    const event = CUSTOM_SOUND_CLIP_IDS.find((event) => event === key);
     if (
       !event ||
       !isRecord(entry) ||

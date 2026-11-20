@@ -26,6 +26,7 @@ export type SettingsPath =
   | "/settings/chat"
   | "/settings/diffs"
   | "/settings/keybindings"
+  | "/settings/sounds"
   | "/settings/snap-shot"
   | "/settings/providers"
   | "/settings/threads"
@@ -104,6 +105,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/chat": msg("Chat"),
   "/settings/diffs": msg("Diffs & pull requests"),
   "/settings/keybindings": msg("Keybindings"),
+  "/settings/sounds": msg("Sounds"),
   "/settings/snap-shot": msg("SnapShots"),
   "/settings/providers": msg("Providers"),
   "/settings/threads": msg("Threads"),
@@ -148,6 +150,7 @@ const ALL_SETTINGS_NAV_GROUPS: ReadonlyArray<SettingsNavGroup> = [
       "/settings/chat",
       "/settings/diffs",
       "/settings/keybindings",
+      "/settings/sounds",
       "/settings/voice",
       "/settings/snap-shot",
     ],
@@ -765,23 +768,49 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "notification-sound-pack",
     title: msg("Sound pack"),
-    to: "/settings/general",
+    to: "/settings/sounds",
+    searchTerms: [msg("notification audio theme chimes")],
   },
   {
     id: "notification-sound-volume",
-    title: msg("Sound volume"),
-    to: "/settings/general",
+    title: msg("Master volume"),
+    to: "/settings/sounds",
+    searchTerms: [msg("sound volume audio mute loudness")],
   },
   {
     id: "notification-sound-focus",
     title: msg("When notification sounds play"),
-    to: "/settings/general",
+    to: "/settings/sounds",
   },
   {
     id: "notification-sound-events",
-    title: msg("Sounds by event"),
-    to: "/settings/general",
-    searchTerms: [msg("custom audio upload import export dictation")],
+    title: msg("Custom sound packs"),
+    to: "/settings/sounds",
+    searchTerms: [msg("custom audio upload import export dictation sounds by event")],
+  },
+  {
+    id: "settle-sounds",
+    title: msg("Settle sounds"),
+    to: "/settings/sounds",
+    searchTerms: [msg("thread settle audio sound header folder")],
+  },
+  {
+    id: "settle-sound-manual",
+    title: msg("When you settle a thread"),
+    to: "/settings/sounds",
+    searchTerms: [msg("manual settle sound audio")],
+  },
+  {
+    id: "settle-sound-automatic",
+    title: msg("When T3 Code settles a thread"),
+    to: "/settings/sounds",
+    searchTerms: [msg("automatic auto settle sound audio")],
+  },
+  {
+    id: "sounds-snap-shot",
+    title: msg("SnapShot capture"),
+    to: "/settings/sounds",
+    searchTerms: [msg("screenshot capture sound shutter whoosh click volume")],
   },
   {
     id: "in-app-notifications",
@@ -1562,6 +1591,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/diffs": null,
   "/settings/snap-shot": null,
   "/settings/keybindings": null,
+  "/settings/sounds": null,
   "/settings/providers": null,
   "/settings/threads": null,
   "/settings/browser": null,
@@ -1593,6 +1623,7 @@ const SPLIT_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 // Section anchors that moved but are not search results themselves.
 const MOVED_SECTION_ANCHORS: Readonly<Record<string, SettingsPath>> = {
   "authorized-clients": "/settings/access",
+  "settle-sounds": "/settings/sounds",
   "text-generation": "/settings/threads",
   about: "/settings/about",
 };

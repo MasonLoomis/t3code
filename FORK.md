@@ -10,16 +10,18 @@ issue against `pingdotgg/t3code` from this fork.
 
 ## What's different
 
-- **Notification sounds.** **Settings → General → Notifications** lets you choose a sound pack,
-  set the volume and focus rule, and use your own clips for individual events. The command
-  palette can mute notification sounds and switch packs. Export a JSON pack to move your custom
-  clips to another device.
+- **Unified Sounds settings.** **Settings → Sounds** (between Keybindings and Voice) brings all
+  app audio into one place: default sound pack, master volume, focus rule, settle sounds,
+  notification and dictation cues, and SnapShot capture audio. Every sound inherits the master
+  volume by default and can set its own unique sound and volume override. The command palette can
+  mute notification sounds and switch packs, and custom uploaded clips can be exported/imported as
+  a JSON pack.
 - **Settle sounds.** Settling a thread yourself plays one sound. A thread that settles any other
   way plays a second sound: auto-settle after a pull request merges or after the idle-days limit,
   an agent settling threads (for example with `t3_thread_organize`), or a settle from another
-  device. The speaker button in the chat header turns the sounds on and off. **Settings → General →
-  Sounds** picks the file for each kind (or Off) and sets the volume. Both settings stay on this
-  device.
+  device. The speaker button in the chat header turns the sounds on and off. **Settings → Sounds**
+  picks the file for each kind (or Off) and lets each use master volume or a custom override. Both
+  settings stay on this device.
 - **Your own sound files.** The app plays files from `%USERPROFILE%\.t3\userdata\sounds`
   (`.wav`, `.mp3`, `.ogg`, `.m4a`, `.flac`, `.webm`, up to 20 MB). The defaults are
   `Transformers-G1-Scene-Transition.wav` for your own settles and

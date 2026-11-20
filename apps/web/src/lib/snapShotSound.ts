@@ -1,11 +1,20 @@
-import type { SnapShotSound } from "@t3tools/contracts";
+import { resolveSoundVolume, type SnapShotSound } from "@t3tools/contracts";
 
 import snapShotClickUrl from "../assets/snap-shot-click.mp3?url";
 import snapShotWhooshUrl from "../assets/snap-shot-whoosh.mp3?url";
 import { getClientSettings } from "../hooks/useSettings";
-import { playBundledSound } from "./soundEngine";
+import { playCustomOrBundledSound } from "./soundEngine";
 
-export function playSnapShotSound(sound: SnapShotSound): void {
+export function playSnapShotSound(
+  sound: SnapShotSound,
+  options?: { readonly useCustom?: boolean },
+): void {
+  const settings = getClientSettings();
   const url = sound === "soft-pop" ? snapShotWhooshUrl : snapShotClickUrl;
-  void playBundledSound(url, getClientSettings().soundVolume);
+  void playCustomOrBundledSound(
+    "snap-shot",
+    url,
+    resolveSoundVolume("snap-shot", settings),
+    options,
+  );
 }

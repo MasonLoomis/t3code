@@ -296,7 +296,7 @@ export const SoundFocusPolicy = Schema.Literals(SOUND_FOCUS_POLICIES);
 export type SoundFocusPolicy = typeof SoundFocusPolicy.Type;
 const DEFAULT_SOUND_FOCUS_POLICY: SoundFocusPolicy = "always";
 
-export const SOUND_EVENT_IDS = [
+const SOUND_EVENT_IDS = [
   "completion",
   "input",
   "approval",
@@ -307,6 +307,16 @@ export const SOUND_EVENT_IDS = [
   "voice-error",
 ] as const;
 export type SoundEventId = (typeof SOUND_EVENT_IDS)[number];
+
+export const CUSTOM_SOUND_CLIP_IDS = [...SOUND_EVENT_IDS, "snap-shot"] as const;
+export type CustomSoundClipId = (typeof CUSTOM_SOUND_CLIP_IDS)[number];
+
+const SOUND_VOLUME_EVENT_IDS = [
+  ...CUSTOM_SOUND_CLIP_IDS,
+  "settle-manual",
+  "settle-automatic",
+] as const;
+export type SoundVolumeEventId = (typeof SOUND_VOLUME_EVENT_IDS)[number];
 
 export const DEFAULT_SOUND_EVENT_ENABLED: Readonly<Record<SoundEventId, boolean>> = {
   completion: true,
@@ -329,6 +339,31 @@ const SoundEventOverrides = Schema.Struct({
   "voice-stop": Schema.optionalKey(Schema.Boolean),
   "voice-error": Schema.optionalKey(Schema.Boolean),
 });
+
+const SoundEventVolumeOverrides = Schema.Struct({
+  completion: Schema.optionalKey(SoundVolume),
+  input: Schema.optionalKey(SoundVolume),
+  approval: Schema.optionalKey(SoundVolume),
+  failed: Schema.optionalKey(SoundVolume),
+  "all-done": Schema.optionalKey(SoundVolume),
+  "voice-start": Schema.optionalKey(SoundVolume),
+  "voice-stop": Schema.optionalKey(SoundVolume),
+  "voice-error": Schema.optionalKey(SoundVolume),
+  "snap-shot": Schema.optionalKey(SoundVolume),
+  "settle-manual": Schema.optionalKey(SoundVolume),
+  "settle-automatic": Schema.optionalKey(SoundVolume),
+});
+export type SoundEventVolumeOverrides = typeof SoundEventVolumeOverrides.Type;
+
+export function resolveSoundVolume(
+  event: SoundVolumeEventId,
+  settings: {
+    readonly soundVolume: number;
+    readonly soundEventVolumes?: SoundEventVolumeOverrides | undefined;
+  },
+): number {
+  return settings.soundEventVolumes?.[event] ?? settings.soundVolume;
+}
 
 export const QuitConfirmationMode = Schema.Literals(["direct", "hold", "double-click"]);
 export type QuitConfirmationMode = typeof QuitConfirmationMode.Type;
@@ -478,6 +513,8 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   // Sparse per-event enable/disable overrides. Missing keys fall back to DEFAULT_SOUND_EVENT_ENABLED.
   soundEvents: SoundEventOverrides.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Sparse per-event volume overrides (0-100). Missing keys inherit soundVolume.
+  soundEventVolumes: SoundEventVolumeOverrides.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   diffColorScheme: DiffColorScheme.pipe(
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
@@ -2171,6 +2208,7 @@ export const ClientSettingsPatch = Schema.Struct({
   soundVolume: Schema.optionalKey(SoundVolume),
   soundFocusPolicy: Schema.optionalKey(SoundFocusPolicy),
   soundEvents: Schema.optionalKey(SoundEventOverrides),
+  soundEventVolumes: Schema.optionalKey(SoundEventVolumeOverrides),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   chatWidth: Schema.optionalKey(ChatWidth),

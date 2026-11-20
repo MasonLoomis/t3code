@@ -526,7 +526,7 @@ export function SnapShotSettings() {
                           <MenuItem
                             aria-label={gt("Play Whoosh")}
                             closeOnClick={false}
-                            onClick={() => playSnapShotSound("soft-pop")}
+                            onClick={() => playSnapShotSound("soft-pop", { useCustom: false })}
                           >
                             <PlayIcon />
                           </MenuItem>
@@ -538,7 +538,9 @@ export function SnapShotSettings() {
                           <MenuItem
                             aria-label={gt("Play Click")}
                             closeOnClick={false}
-                            onClick={() => playSnapShotSound("camera-shutter")}
+                            onClick={() =>
+                              playSnapShotSound("camera-shutter", { useCustom: false })
+                            }
                           >
                             <PlayIcon />
                           </MenuItem>
