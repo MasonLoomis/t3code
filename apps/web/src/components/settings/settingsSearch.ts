@@ -777,6 +777,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("automatic auto settle sound audio")],
   },
   {
+    id: "settle-sound-unsettle",
+    title: msg("When a thread unsettles"),
+    to: "/settings/sounds",
+    searchTerms: [msg("unsettle un-settle wake restore settle sound audio")],
+  },
+  {
     id: "sounds-snap-shot",
     title: msg("SnapShot capture"),
     to: "/settings/sounds",

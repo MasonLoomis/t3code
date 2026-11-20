@@ -128,6 +128,11 @@ const DEFAULT_EXTRAS: Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<Syn
     { type: "sine", freq: 523.25, start: 0, duration: 0.1, gain: 0.16, attack: 0.012 },
     { type: "sine", freq: 392, start: 0.08, duration: 0.2, gain: 0.16, attack: 0.012 },
   ],
+  unsettle: [
+    { type: "triangle", freq: 523.25, start: 0, duration: 0.09, gain: 0.19, attack: 0.006 },
+    { type: "sine", freq: 659.25, start: 0.065, duration: 0.11, gain: 0.21, attack: 0.006 },
+    { type: "sine", freq: 1046.5, start: 0.13, duration: 0.22, gain: 0.23, attack: 0.006 },
+  ],
 };
 
 const MINIMAL_PACK: Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<SynthNote>>> = {
@@ -180,6 +185,11 @@ const MINIMAL_PACK: Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<Synth
       gain: 0.13,
       attack: 0.015,
     },
+  ],
+  unsettle: [
+    { type: "sine", freq: 440, start: 0, duration: 0.11, gain: 0.14, attack: 0.01 },
+    { type: "sine", freq: 659.25, start: 0.075, duration: 0.14, gain: 0.16, attack: 0.01 },
+    { type: "sine", freq: 880, start: 0.15, duration: 0.22, gain: 0.16, attack: 0.012 },
   ],
 };
 
@@ -236,6 +246,11 @@ const RETRO_PACK: Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<SynthNo
   "settle-automatic": [
     { type: "square", freq: 523.25, start: 0, duration: 0.055, gain: 0.1, filterFreq: 2000 },
     { type: "square", freq: 392, start: 0.06, duration: 0.11, gain: 0.1, filterFreq: 1800 },
+  ],
+  unsettle: [
+    { type: "square", freq: 523.25, start: 0, duration: 0.05, gain: 0.11, filterFreq: 2600 },
+    { type: "square", freq: 659.25, start: 0.05, duration: 0.05, gain: 0.11, filterFreq: 3000 },
+    { type: "square", freq: 1046.5, start: 0.1, duration: 0.14, gain: 0.13, filterFreq: 3600 },
   ],
 };
 
@@ -444,6 +459,28 @@ const GALACTIC_PACK: Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<Synt
       gain: 0.16,
       fmFreq: 20,
       fmDepth: 45,
+    },
+  ],
+  unsettle: [
+    {
+      type: "triangle",
+      freq: 520,
+      endFreq: 960,
+      start: 0,
+      duration: 0.09,
+      gain: 0.17,
+      filterFreq: 900,
+      filterEndFreq: 2800,
+    },
+    {
+      type: "sine",
+      freq: 980,
+      endFreq: 1760,
+      start: 0.085,
+      duration: 0.14,
+      gain: 0.2,
+      fmFreq: 32,
+      fmDepth: 80,
     },
   ],
 };

@@ -1,12 +1,12 @@
-// Fork-only (MasonLoomis/t3code): plays the user's own sounds when a thread settles. A manual
-// settle from this client plays `manualSound`; any other settle seen in the live thread list
-// (auto-settle after a merge or idle days, an agent organizing threads, another device) plays
-// `automaticSound`. Files come from `<T3 home>/userdata/sounds` on the primary server. See FORK.md.
+// Fork-only (MasonLoomis/t3code): plays pack-styled or custom sounds when a thread settles or
+// unsettles. Manual settles play `manualSound`, other settles play `automaticSound`, and settled
+// threads waking back up play `unsettleSound`. Custom files come from `<T3 home>/userdata/sounds`.
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import {
   resolveSoundVolume,
   SETTLE_SOUND_PACK_DEFAULT,
   type ClientSettings,
+  type SettleSoundEventId,
   type SoundPackId,
 } from "@t3tools/contracts/settings";
 import * as Option from "effect/Option";
@@ -53,9 +53,9 @@ export async function listSettleSounds(): Promise<ReadonlyArray<string>> {
   return Array.isArray(sounds) ? sounds.filter((name) => typeof name === "string") : [];
 }
 
-// Insertion-ordered, so the oldest entry is evicted first. Two selections plus one preview fit.
+// Insertion-ordered, so the oldest entry is evicted first. Three selections plus one preview fit.
 const objectUrls = new Map<string, Promise<string | null>>();
-const MAX_CACHED_SOUNDS = 3;
+const MAX_CACHED_SOUNDS = 4;
 
 function forgetSound(name: string): void {
   const cached = objectUrls.get(name);
@@ -91,7 +91,32 @@ function soundObjectUrl(name: string): Promise<string | null> {
   return cached;
 }
 
-/** Plays a settle sound (either the active sound pack's cue or a file from `userdata/sounds`) at 0..1 volume. */
+function settleSoundEvent(kind: SettleSoundKind): SettleSoundEventId {
+  switch (kind) {
+    case "manual":
+      return "settle-manual";
+    case "automatic":
+      return "settle-automatic";
+    case "unsettle":
+      return "unsettle";
+  }
+}
+
+function settleSoundSetting(
+  kind: SettleSoundKind,
+  settings: ClientSettings["settleSounds"],
+): string {
+  switch (kind) {
+    case "manual":
+      return settings.manualSound;
+    case "automatic":
+      return settings.automaticSound;
+    case "unsettle":
+      return settings.unsettleSound;
+  }
+}
+
+/** Plays a settle or unsettle sound (either the active sound pack's cue or a file from `userdata/sounds`) at 0..1 volume. */
 export function previewSettleSound(
   name: string,
   volume: number,
@@ -100,7 +125,7 @@ export function previewSettleSound(
   const clamped = Math.min(1, Math.max(0, volume));
   if (name.length === 0 || clamped <= 0) return;
   if (name === SETTLE_SOUND_PACK_DEFAULT) {
-    const event = options?.kind === "automatic" ? "settle-automatic" : "settle-manual";
+    const event = settleSoundEvent(options?.kind ?? "manual");
     const pack = options?.pack ?? getClientSettings().soundPack;
     void playPackSynthesizedEvent(event, pack, Math.round(clamped * 100));
     return;
@@ -113,19 +138,21 @@ export function previewSettleSound(
   });
 }
 
-let lastPlayedAt = 0;
+// Track settle and unsettle gaps independently so undoing a settle immediately still sounds.
+const lastPlayedAt = { settle: 0, unsettle: 0 };
 
 function playSettleSound(kind: SettleSoundKind, settings: ClientSettings["settleSounds"]): void {
   if (!settings.enabled) return;
+  const soundName = settleSoundSetting(kind, settings);
+  if (soundName.length === 0) return;
   const clientSettings = getClientSettings();
-  const volume =
-    resolveSoundVolume(kind === "manual" ? "settle-manual" : "settle-automatic", clientSettings) /
-    100;
+  const volume = resolveSoundVolume(settleSoundEvent(kind), clientSettings) / 100;
   if (volume <= 0) return;
+  const bucket = kind === "unsettle" ? "unsettle" : "settle";
   const now = Date.now();
-  if (now - lastPlayedAt < MIN_GAP_MS) return;
-  lastPlayedAt = now;
-  previewSettleSound(kind === "manual" ? settings.manualSound : settings.automaticSound, volume, {
+  if (now - lastPlayedAt[bucket] < MIN_GAP_MS) return;
+  lastPlayedAt[bucket] = now;
+  previewSettleSound(soundName, volume, {
     kind,
     pack: clientSettings.soundPack,
   });
@@ -180,8 +207,13 @@ export function startSettleSounds(registry: AtomRegistry.AtomRegistry): () => vo
         });
         previous = result.next;
         for (const threadId of result.consumed) claims.delete(threadId);
-        if (result.settled.length > 0 && currentSettings !== null) {
-          playSettleSound("automatic", currentSettings);
+        if (currentSettings !== null) {
+          if (result.settled.length > 0) {
+            playSettleSound("automatic", currentSettings);
+          }
+          if (result.unsettled.length > 0) {
+            playSettleSound("unsettle", currentSettings);
+          }
         }
       },
       { immediate: true },

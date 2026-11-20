@@ -314,7 +314,7 @@ const SOUND_EVENT_IDS = [
 ] as const;
 export type SoundEventId = (typeof SOUND_EVENT_IDS)[number];
 
-export type SettleSoundEventId = "settle-manual" | "settle-automatic";
+export type SettleSoundEventId = "settle-manual" | "settle-automatic" | "unsettle";
 export type SynthesizedSoundEventId = SoundEventId | SettleSoundEventId;
 
 export const CUSTOM_SOUND_CLIP_IDS = [...SOUND_EVENT_IDS, "snap-shot"] as const;
@@ -324,6 +324,7 @@ const SOUND_VOLUME_EVENT_IDS = [
   ...CUSTOM_SOUND_CLIP_IDS,
   "settle-manual",
   "settle-automatic",
+  "unsettle",
 ] as const;
 export type SoundVolumeEventId = (typeof SOUND_VOLUME_EVENT_IDS)[number];
 
@@ -336,6 +337,9 @@ export const SoundThemeConfig = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
   ),
   settleAutomaticSound: Schema.String.check(Schema.isMaxLength(255)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
+  ),
+  unsettleSound: Schema.String.check(Schema.isMaxLength(255)).pipe(
     Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
   ),
   autoApplyWithTheme: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -376,6 +380,7 @@ const SoundEventVolumeOverrides = Schema.Struct({
   "snap-shot": Schema.optionalKey(SoundVolume),
   "settle-manual": Schema.optionalKey(SoundVolume),
   "settle-automatic": Schema.optionalKey(SoundVolume),
+  unsettle: Schema.optionalKey(SoundVolume),
 });
 export type SoundEventVolumeOverrides = typeof SoundEventVolumeOverrides.Type;
 
