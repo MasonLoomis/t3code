@@ -9,7 +9,6 @@ import {
   unlockNotificationAudio,
 } from "../../threadNotifications";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { NotificationSoundSettings } from "./NotificationSoundSettings";
 import { SettingsRow } from "./settingsLayout";
 import { useSearchableSetting } from "./settingsSearch";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
@@ -96,7 +95,6 @@ export function NotificationSettings() {
           </Select>
         }
       />
-      <NotificationSoundSettings />
     </>
   );
 }

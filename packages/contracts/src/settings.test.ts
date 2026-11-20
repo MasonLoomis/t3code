@@ -20,6 +20,7 @@ import {
   resolveIdleCompaction,
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
+  resolveSoundVolume,
   ServerSettings,
   ServerSettingsPatch,
   withIdleCompaction,
@@ -563,6 +564,14 @@ describe("sound settings", () => {
     expect(defaults.soundVolume).toBe(80);
     expect(defaults.soundFocusPolicy).toBe("always");
     expect(defaults.soundEvents).toEqual({});
+    expect(defaults.soundEventVolumes).toEqual({});
+    expect(resolveSoundVolume("completion", defaults)).toBe(80);
+    expect(
+      resolveSoundVolume("settle-manual", {
+        soundVolume: 80,
+        soundEventVolumes: { "settle-manual": 45 },
+      }),
+    ).toBe(45);
 
     expect(
       decodeClientSettingsPatch({
@@ -570,16 +579,19 @@ describe("sound settings", () => {
         soundVolume: 65,
         soundFocusPolicy: "background-threads",
         soundEvents: { approval: true, "voice-start": true, completion: false },
+        soundEventVolumes: { approval: 100, "snap-shot": 40, "settle-manual": 55 },
       }),
     ).toEqual({
       soundPack: "galactic",
       soundVolume: 65,
       soundFocusPolicy: "background-threads",
       soundEvents: { approval: true, "voice-start": true, completion: false },
+      soundEventVolumes: { approval: 100, "snap-shot": 40, "settle-manual": 55 },
     });
 
     expect(() => decodeClientSettingsPatch({ soundVolume: 105 })).toThrow();
     expect(() => decodeClientSettingsPatch({ soundVolume: -5 })).toThrow();
+    expect(() => decodeClientSettingsPatch({ soundEventVolumes: { approval: 101 } })).toThrow();
     expect(() => decodeClientSettingsPatch({ soundPack: "invalid-pack" })).toThrow();
   });
 });
