@@ -257,6 +257,7 @@ import {
 } from "./CommandPaletteAddProject";
 import { useCommandPaletteThreadActions } from "./CommandPaletteThreadActions";
 import { useCommandPaletteThreadItems } from "./CommandPaletteThreadItems";
+import { useCommandPaletteSoundItems } from "./CommandPaletteSoundItems";
 import { useCommandPaletteThemeItems } from "./CommandPaletteThemeItems";
 import {
   PORT_FORWARD_GROUP_PREFIX,
@@ -564,6 +565,7 @@ function OpenCommandPaletteDialog(props: {
     activeThread: activeThread ?? null,
     query: deferredQuery,
   });
+  const { toggleSoundItem, changeSoundPackItem } = useCommandPaletteSoundItems();
   const currentView = viewStack.at(-1)?.view ?? null;
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
   const [browseGeneration, setBrowseGeneration] = useState(0);
@@ -1687,6 +1689,7 @@ function OpenCommandPaletteDialog(props: {
 
   actionItems.push(changeThemeItem);
   actionItems.push(changeAppearanceItem);
+  actionItems.push(toggleSoundItem, changeSoundPackItem);
 
   actionItems.push(themeEditorItem);
 

@@ -14,6 +14,17 @@ Move the mouse to the middle of the left window edge to find a handle. Drag it r
 it to show the sidebar again. Dragging back to the edge before releasing hides the preview
 and leaves it hidden. The sidebar toggle and shortcut still keep it open.
 
+## Notification sounds
+
+On web and desktop, open **Settings → General → Notifications** and choose a **Thread notifications**
+mode with sound. Pick a pack, adjust the volume, and choose whether sounds can play for the thread
+you have open. The command palette can mute or unmute notification sounds and switch packs.
+
+Under **Sounds by event**, enable **All threads finished** for a cue when the final running thread
+completes, or enable cues for dictation. To use your own clips, upload an MP3, WAV, OGG, or M4A
+clip up to 1 MB and 10 seconds long. Clips stay in this browser profile or desktop installation.
+Export a sound pack as JSON to copy your clips to another device.
+
 ## Start a thread
 
 On web and desktop, **New thread** opens the project picker when you have more than one

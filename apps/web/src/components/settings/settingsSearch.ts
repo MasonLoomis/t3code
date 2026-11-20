@@ -763,6 +763,27 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("notification sound alert completion input approval desktop")],
   },
   {
+    id: "notification-sound-pack",
+    title: msg("Sound pack"),
+    to: "/settings/general",
+  },
+  {
+    id: "notification-sound-volume",
+    title: msg("Sound volume"),
+    to: "/settings/general",
+  },
+  {
+    id: "notification-sound-focus",
+    title: msg("When notification sounds play"),
+    to: "/settings/general",
+  },
+  {
+    id: "notification-sound-events",
+    title: msg("Sounds by event"),
+    to: "/settings/general",
+    searchTerms: [msg("custom audio upload import export dictation")],
+  },
+  {
     id: "in-app-notifications",
     title: msg("In-app notifications"),
     to: "/settings/general",

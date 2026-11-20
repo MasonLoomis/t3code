@@ -62,6 +62,7 @@ it to inspect what was captured.
 Settings controls the capture sound, the brief flash on the captured window, and the animation that
 flies the image into your draft. Each can be turned off independently. The operating system's
 reduced-motion setting also disables the animation.
+Adjust capture sound volume in **Settings → General → Notifications → Sound volume**.
 
 ## Linux desktops
 

@@ -1,14 +1,19 @@
 # Mason's T3 Code fork
 
-This is [T3 Code](https://github.com/pingdotgg/t3code) with one addition: sounds when a thread
-settles. It follows the official **stable** releases only and ships a Windows installer that
-replaces the official app and uses the same data folder (`%USERPROFILE%\.t3\userdata`).
+This fork adds customizable notification and settle sounds to
+[T3 Code](https://github.com/pingdotgg/t3code). It follows official **stable** releases and ships a
+Windows installer that replaces the official app and uses the same data folder
+(`%USERPROFILE%\.t3\userdata`).
 
 Nothing here is sent upstream. Upstream does not take outside feature PRs, so never open a PR or
 issue against `pingdotgg/t3code` from this fork.
 
 ## What's different
 
+- **Notification sounds.** **Settings → General → Notifications** lets you choose a sound pack,
+  set the volume and focus rule, and use your own clips for individual events. The command
+  palette can mute notification sounds and switch packs. Export a JSON pack to move your custom
+  clips to another device.
 - **Settle sounds.** Settling a thread yourself plays one sound. A thread that settles any other
   way plays a second sound: auto-settle after a pull request merges or after the idle-days limit,
   an agent settling threads (for example with `t3_thread_organize`), or a settle from another
@@ -18,16 +23,13 @@ issue against `pingdotgg/t3code` from this fork.
 - **Your own sound files.** The app plays files from `%USERPROFILE%\.t3\userdata\sounds`
   (`.wav`, `.mp3`, `.ogg`, `.m4a`, `.flac`, `.webm`, up to 20 MB). The defaults are
   `Transformers-G1-Scene-Transition.wav` for your own settles and
-  `Transformers-G1-Transformation.wav` for the rest. No sound files live in this repository. With
-  the folder empty or missing, nothing plays and nothing errors.
+  `Transformers-G1-Transformation.wav` for the rest. Your settle clips stay in that folder. With
+  the folder empty or missing, settle sounds are silent.
 - **Updates come from this fork.** The installer's updater reads releases from
   `MasonLoomis/t3code`, so the official updater cannot replace the fork. Only the stable track
   exists here; switching the app to nightly finds no updates.
 - **Unsigned builds.** Windows SmartScreen shows "Windows protected your PC" the first time you
   run an installer. Choose **More info → Run anyway**.
-
-The patch is small on purpose so upstream updates rarely conflict. New code lives in `fork/` folders and
-`settleSounds.ts` files; upstream files only gain a line or two where they hook it in.
 
 How a settle is classified: `useThreadActions.settleThread` is the one path every manual settle
 in the app takes (sidebar, menus, keybinding, command palette). It claims the thread and plays the
@@ -42,7 +44,10 @@ a thread that becomes settled without a claim from this window plays the automat
 | `vX.Y.Z`          | Fork releases, on the fork's commit. The app links update notes to this tag.       |
 | `mason/stable`    | The default branch: the latest upstream stable tag plus the fork's commits on top. |
 | `mason/candidate` | Temporary branch the sync workflow builds before it moves `mason/stable`.          |
-| `base/v0.1.10`    | Review base for the fork's pull request, at the upstream tag.                      |
+
+Base fork feature branches on `mason/stable` and review changes against that stable base. When
+bringing in a new upstream stable tag at the same time, use a temporary review branch that already
+contains the tag and the existing fork patches. Advance `mason/stable` after the feature review.
 
 ## How syncing works
 
