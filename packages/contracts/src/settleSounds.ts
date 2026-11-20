@@ -1,4 +1,4 @@
-// Fork-only (MasonLoomis/t3code): sounds played when a thread settles. See FORK.md.
+// Fork-only (MasonLoomis/t3code): sounds played when a thread settles or unsettles. See FORK.md.
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
@@ -14,6 +14,9 @@ export const SettleSoundSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
   ),
   automaticSound: SettleSoundFile.pipe(
+    Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
+  ),
+  unsettleSound: SettleSoundFile.pipe(
     Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
   ),
   volume: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })).pipe(

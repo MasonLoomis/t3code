@@ -75,7 +75,7 @@ describe("SoundsSettingsPanel", () => {
     setup({
       soundPack: "galactic",
       soundVolume: 75,
-      soundEventVolumes: { "settle-manual": 40 },
+      soundEventVolumes: { "settle-manual": 40, unsettle: 90 },
     });
 
     await using _screen = await render(<SoundsSettingsPanel />, { router: "/settings/sounds" });
@@ -105,6 +105,12 @@ describe("SoundsSettingsPanel", () => {
       kind: "automatic",
       pack: "galactic",
     });
+
+    await userEvent.click(page.getByRole("button", { name: "Play unsettle sound" }));
+    expect(state.previewSettleSound).toHaveBeenCalledWith(SETTLE_SOUND_PACK_DEFAULT, 0.9, {
+      kind: "unsettle",
+      pack: "galactic",
+    });
   });
 
   it("lets any event reset a custom volume override back to master default", async () => {
@@ -129,6 +135,7 @@ describe("SoundsSettingsPanel", () => {
       soundPack: "retro" as const,
       settleManualSound: "Transformers-G1-Scene-Transition.wav",
       settleAutomaticSound: "Transformers-G1-Transformation.wav",
+      unsettleSound: SETTLE_SOUND_PACK_DEFAULT,
       autoApplyWithTheme: true,
     };
     setup({ soundThemeConfigs: [existing] });
@@ -150,6 +157,7 @@ describe("SoundsSettingsPanel", () => {
           soundPack: "default",
           settleManualSound: SETTLE_SOUND_PACK_DEFAULT,
           settleAutomaticSound: SETTLE_SOUND_PACK_DEFAULT,
+          unsettleSound: SETTLE_SOUND_PACK_DEFAULT,
           autoApplyWithTheme: true,
         }),
       ],
