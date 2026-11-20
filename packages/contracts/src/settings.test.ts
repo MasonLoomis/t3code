@@ -555,3 +555,31 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch(input)).toEqual(input);
   });
 });
+
+describe("sound settings", () => {
+  it("defaults sound customization fields and validates bounds", () => {
+    const defaults = decodeClientSettings({});
+    expect(defaults.soundPack).toBe("default");
+    expect(defaults.soundVolume).toBe(80);
+    expect(defaults.soundFocusPolicy).toBe("always");
+    expect(defaults.soundEvents).toEqual({});
+
+    expect(
+      decodeClientSettingsPatch({
+        soundPack: "galactic",
+        soundVolume: 65,
+        soundFocusPolicy: "background-threads",
+        soundEvents: { approval: true, "voice-start": true, completion: false },
+      }),
+    ).toEqual({
+      soundPack: "galactic",
+      soundVolume: 65,
+      soundFocusPolicy: "background-threads",
+      soundEvents: { approval: true, "voice-start": true, completion: false },
+    });
+
+    expect(() => decodeClientSettingsPatch({ soundVolume: 105 })).toThrow();
+    expect(() => decodeClientSettingsPatch({ soundVolume: -5 })).toThrow();
+    expect(() => decodeClientSettingsPatch({ soundPack: "invalid-pack" })).toThrow();
+  });
+});

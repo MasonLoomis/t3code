@@ -13,7 +13,7 @@ Available in the desktop app on **macOS**, **Windows**, and **Linux (Wayland)** 
 2. Switch to any window and press the shortcut (default on macOS/Windows: **both Shift keys together**). T3 Code attaches the capture to your active draft (or starts a new draft) and brings itself to the front.
 
 - **Include app text**: Toggle in **Settings → SnapShots** to include or omit accessibility tree data (not every app exposes document/terminal contents; slow apps fall back to screenshot-only).
-- **Sound, flash, and animation**: Each can be toggled independently in Settings.
+- **Sound, flash, and animation**: Each can be toggled independently in Settings. Adjust capture sound volume in **Settings → General → Notifications → Sound volume**.
 - **Customize shortcut**: Pick a modifier pair (macOS/Windows) or key chord in Settings (Linux uses key chords only).
 
 ## Linux Wayland desktops

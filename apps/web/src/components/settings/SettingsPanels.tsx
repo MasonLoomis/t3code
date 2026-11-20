@@ -536,6 +536,12 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.notificationMode !== DEFAULT_UNIFIED_SETTINGS.notificationMode
       ? [gt("Thread notifications")]
       : []),
+    ...(settings.soundPack !== DEFAULT_UNIFIED_SETTINGS.soundPack ? [gt("Sound pack")] : []),
+    ...(settings.soundVolume !== DEFAULT_UNIFIED_SETTINGS.soundVolume ? [gt("Sound volume")] : []),
+    ...(settings.soundFocusPolicy !== DEFAULT_UNIFIED_SETTINGS.soundFocusPolicy
+      ? [gt("When notification sounds play")]
+      : []),
+    ...(Object.keys(settings.soundEvents).length > 0 ? [gt("Sounds by event")] : []),
     ...(settings.inAppNotificationsEnabled !== DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled
       ? [gt("In-app notifications")]
       : []),
@@ -719,6 +725,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       language: DEFAULT_UNIFIED_SETTINGS.language,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       notificationMode: DEFAULT_UNIFIED_SETTINGS.notificationMode,
+      soundPack: DEFAULT_UNIFIED_SETTINGS.soundPack,
+      soundVolume: DEFAULT_UNIFIED_SETTINGS.soundVolume,
+      soundFocusPolicy: DEFAULT_UNIFIED_SETTINGS.soundFocusPolicy,
+      soundEvents: DEFAULT_UNIFIED_SETTINGS.soundEvents,
       inAppNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       persistComposerContextStrip: DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip,

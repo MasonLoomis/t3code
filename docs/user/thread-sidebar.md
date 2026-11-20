@@ -2,6 +2,17 @@
 
 Use a separate thread for each task. Choose **New worktree** when a task needs its own Git branch and working directory; threads sharing a checkout share its branch, so T3 Code blocks branch switches while one is running.
 
+## Notification sounds
+
+On web and desktop, open **Settings → General → Notifications** and choose a **Thread notifications**
+mode with sound. Pick a pack, adjust the volume, and choose whether sounds can play for the thread
+you have open. The command palette can mute or unmute notification sounds and switch packs.
+
+Under **Sounds by event**, enable **All threads finished** for a cue when the final running thread
+completes, or enable cues for dictation. To use your own clips, upload an MP3, WAV, OGG, or M4A
+clip up to 1 MB and 10 seconds long. Clips stay in this browser profile or desktop installation.
+Export a sound pack as JSON to copy your clips to another device.
+
 ## Start a thread
 
 - **Web and desktop**: **New thread** opens the project picker when you have multiple open projects (unless the sidebar is filtered to one project). `Shift`-click to start in the current project. To reuse an existing worktree, choose **New thread in this worktree** from the branch toolbar.
