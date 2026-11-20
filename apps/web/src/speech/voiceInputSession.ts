@@ -22,6 +22,13 @@ import { resolveSpeechVocabulary } from "@t3tools/shared/speech";
 import { useEffect, useSyncExternalStore } from "react";
 
 import { toastManager } from "../components/ui/toast";
+import { getClientSettings } from "../hooks/useSettings";
+import {
+  playVoiceSound,
+  setDictationRecording,
+  soundEventEnabled,
+  unlockSoundAudio,
+} from "../lib/soundEngine";
 import { chooseRecordingMicrophone } from "./browserMicrophones";
 import { createBrowserVoiceInputPlatform } from "./browserVoiceInput";
 import { runEnvironmentSpeech } from "./runEnvironmentSpeech";
@@ -199,7 +206,18 @@ export class VoiceInputSession {
     this.controller = new VoiceInputController({
       resolve: m,
       retryFailedRecording: true,
-      recorder: platform.recorder,
+      recorder: {
+        get uri() {
+          return platform.recorder.uri;
+        },
+        prepareToRecordAsync: async (signal) => {
+          await playVoiceSound("voice-start", getClientSettings, signal);
+          signal?.throwIfAborted();
+          await platform.recorder.prepareToRecordAsync(signal);
+        },
+        record: (options) => platform.recorder.record(options),
+        stop: () => platform.recorder.stop(),
+      },
       getTranscriber: () => platform.transcriber,
       requestPermission: async () => ({ granted: true, canAskAgain: true }),
       configureRecording: async () => undefined,
@@ -220,9 +238,22 @@ export class VoiceInputSession {
       commitDraft: (text, selection) => this.target?.commitDraft(text, selection),
       onStateChange: (state) => {
         if (this.disposed) return;
+        const previous = this.snapshot.state;
+        const wasRecording = previous.phase === "recording";
+        const recording = state.phase === "recording";
+        if (recording !== wasRecording) setDictationRecording(this, recording);
+        const earcon =
+          state.error !== null && state.error !== previous.error
+            ? "voice-error"
+            : wasRecording && !recording && state.error === null
+              ? "voice-stop"
+              : null;
         const recordingStartedAt =
           state.phase !== "recording" ? null : (this.snapshot.recordingStartedAt ?? Date.now());
         this.publish({ ...this.snapshot, state, recordingStartedAt });
+        if (earcon) {
+          void playVoiceSound(earcon, () => (this.disposed ? undefined : getClientSettings()));
+        }
         if (state.phase !== "recording" && state.phase !== "transcribing")
           this.publishActivity(SILENT_ACTIVITY);
       },
@@ -258,6 +289,14 @@ export class VoiceInputSession {
       voiceInputBlocksSubmission(this.controller.currentState) &&
       this.target?.ownerKey !== target.ownerKey;
     if (busyElsewhere) return Promise.resolve();
+    const settings = getClientSettings();
+    if (
+      settings.soundVolume > 0 &&
+      (["voice-start", "voice-stop", "voice-error"] as const).some((event) =>
+        soundEventEnabled(event, settings),
+      )
+    )
+      unlockSoundAudio();
     this.target = target;
     this.publishActivity(SILENT_ACTIVITY);
     this.publish({ ...this.snapshot, target });
@@ -291,6 +330,7 @@ export class VoiceInputSession {
 
   dispose(): void {
     this.disposed = true;
+    setDictationRecording(this, false);
     this.controller.dispose();
     this.listeners.clear();
     this.activityListeners.clear();

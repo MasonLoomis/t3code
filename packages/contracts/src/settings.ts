@@ -278,6 +278,58 @@ export const NotificationMode = Schema.Literals([
 ]);
 export type NotificationMode = typeof NotificationMode.Type;
 
+export const SOUND_PACK_IDS = ["default", "minimal", "retro", "galactic"] as const;
+export const SoundPackId = Schema.Literals(SOUND_PACK_IDS);
+export type SoundPackId = typeof SoundPackId.Type;
+const DEFAULT_SOUND_PACK: SoundPackId = "default";
+
+export const MIN_SOUND_VOLUME = 0;
+export const MAX_SOUND_VOLUME = 100;
+export const SoundVolume = Schema.Int.check(
+  Schema.isBetween({ minimum: MIN_SOUND_VOLUME, maximum: MAX_SOUND_VOLUME }),
+);
+export type SoundVolume = typeof SoundVolume.Type;
+export const DEFAULT_SOUND_VOLUME: SoundVolume = 80;
+
+export const SOUND_FOCUS_POLICIES = ["always", "background-threads", "unfocused"] as const;
+export const SoundFocusPolicy = Schema.Literals(SOUND_FOCUS_POLICIES);
+export type SoundFocusPolicy = typeof SoundFocusPolicy.Type;
+const DEFAULT_SOUND_FOCUS_POLICY: SoundFocusPolicy = "always";
+
+export const SOUND_EVENT_IDS = [
+  "completion",
+  "input",
+  "approval",
+  "failed",
+  "all-done",
+  "voice-start",
+  "voice-stop",
+  "voice-error",
+] as const;
+export type SoundEventId = (typeof SOUND_EVENT_IDS)[number];
+
+export const DEFAULT_SOUND_EVENT_ENABLED: Readonly<Record<SoundEventId, boolean>> = {
+  completion: true,
+  input: true,
+  approval: true,
+  failed: true,
+  "all-done": false,
+  "voice-start": false,
+  "voice-stop": false,
+  "voice-error": false,
+};
+
+const SoundEventOverrides = Schema.Struct({
+  completion: Schema.optionalKey(Schema.Boolean),
+  input: Schema.optionalKey(Schema.Boolean),
+  approval: Schema.optionalKey(Schema.Boolean),
+  failed: Schema.optionalKey(Schema.Boolean),
+  "all-done": Schema.optionalKey(Schema.Boolean),
+  "voice-start": Schema.optionalKey(Schema.Boolean),
+  "voice-stop": Schema.optionalKey(Schema.Boolean),
+  "voice-error": Schema.optionalKey(Schema.Boolean),
+});
+
 export const QuitConfirmationMode = Schema.Literals(["direct", "hold", "double-click"]);
 export type QuitConfirmationMode = typeof QuitConfirmationMode.Type;
 const DEFAULT_QUIT_CONFIRMATION_MODE: QuitConfirmationMode = "hold";
@@ -408,6 +460,13 @@ export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
   ),
+  soundPack: SoundPackId.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_SOUND_PACK))),
+  soundVolume: SoundVolume.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_SOUND_VOLUME))),
+  soundFocusPolicy: SoundFocusPolicy.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SOUND_FOCUS_POLICY)),
+  ),
+  // Sparse per-event enable/disable overrides. Missing keys fall back to DEFAULT_SOUND_EVENT_ENABLED.
+  soundEvents: SoundEventOverrides.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   diffColorScheme: DiffColorScheme.pipe(
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
@@ -2054,6 +2113,10 @@ export function requiredScopesForProjectMutation(
 export const ClientSettingsPatch = Schema.Struct({
   settleSounds: Schema.optionalKey(SettleSoundSettings),
   notificationMode: Schema.optionalKey(NotificationMode),
+  soundPack: Schema.optionalKey(SoundPackId),
+  soundVolume: Schema.optionalKey(SoundVolume),
+  soundFocusPolicy: Schema.optionalKey(SoundFocusPolicy),
+  soundEvents: Schema.optionalKey(SoundEventOverrides),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   chatWidth: Schema.optionalKey(ChatWidth),

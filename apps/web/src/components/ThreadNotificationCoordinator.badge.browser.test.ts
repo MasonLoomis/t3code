@@ -1,5 +1,5 @@
 import type { AnyRouter } from "@tanstack/react-router";
-import { EnvironmentId } from "@t3tools/contracts";
+import { DEFAULT_CLIENT_SETTINGS, EnvironmentId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import { Atom, AtomRegistry } from "effect/reactivity";
@@ -11,6 +11,7 @@ import { RELEASED_COMPLETION_GRACE_MS } from "./ThreadNotificationCoordinator.lo
 const state = vi.hoisted(() => ({
   mode: "notifications",
   inApp: false,
+  allDone: false,
   toast: vi.fn(),
   closeToast: vi.fn(),
   shells: null as unknown as { set: (id: string, value: unknown) => void },
@@ -73,8 +74,10 @@ vi.mock(import("../hooks/useSettings"), async (original) => ({
     return () => state.settingsListeners.delete(listener);
   }) as never,
   getClientSettings: (() => ({
+    ...DEFAULT_CLIENT_SETTINGS,
     notificationMode: state.mode,
     inAppNotificationsEnabled: state.inApp,
+    soundEvents: { "all-done": state.allDone },
   })) as never,
 }));
 vi.mock(import("../threadNotifications"), async (original) => ({
@@ -198,6 +201,7 @@ function setup() {
   stack.defer(() => testRegistry.dispose());
   state.mode = "notifications";
   state.inApp = false;
+  state.allDone = false;
   state.settingsListeners.clear();
   registry.set(environmentIdsAtom, ["one", "two"]);
   state.shells.set("one", shell());
@@ -292,6 +296,26 @@ it("presents completion notifications and sound as soon as the shell completes",
   expect(TestNotification.sent.map((sent) => sent.title)).toEqual(["Thread completed"]);
   expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
 });
+
+it.each([
+  { other: "live", expected: ["completion", "all-done"] },
+  { other: "cached", expected: ["all-done"] },
+])(
+  "plays all-done when the last live thread finishes with the other environment $other",
+  async ({ other, expected }) => {
+    await using app = setup();
+    state.mode = "sound";
+    state.allDone = true;
+    app.start();
+    if (other === "cached") state.shells.set("two", { ...shell(), status: other });
+    const completed = shell({
+      latestTurn: { turnId: "turn", state: "completed", completedAt: "2026-09-13T07:00:01.000Z" },
+    });
+    state.shells.set("one", completed);
+    if (other === "live") state.shells.set("two", completed);
+    expect(state.sound.mock.calls.map(([event]) => event)).toEqual(expected);
+  },
+);
 
 it.each([false, true])(
   "presents one completion when a monitor ends with a final wake (disconnected: %s)",
