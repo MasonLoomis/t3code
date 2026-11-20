@@ -5,24 +5,42 @@ import {
   MAX_SOUND_VOLUME,
   MIN_SOUND_VOLUME,
   resolveSoundVolume,
+  SETTLE_SOUND_PACK_DEFAULT,
   SOUND_FOCUS_POLICIES,
   SOUND_PACK_IDS,
   type ClientSettings,
   type CustomSoundClipId,
   type SoundEventId,
+  type SoundPackId,
+  type SoundThemeConfig,
   type SoundVolumeEventId,
 } from "@t3tools/contracts/settings";
+import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
 import * as Schema from "effect/Schema";
 import { msg, useGT, useMessages } from "gt-react";
-import { ChevronDownIcon, PlayIcon, RotateCcwIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  PencilIcon,
+  PlayIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  Trash2Icon,
+  Volume2Icon,
+  VolumeXIcon,
+} from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { listSettleSounds, previewSettleSound } from "../../fork/settleSounds";
+import { applySoundThemeConfig, isSoundThemeConfigActive } from "../../fork/soundThemeLinks";
+import { useCustomThemes } from "../../hooks/useCustomThemes";
+import { useEnvironmentThemeDefinitions } from "../../hooks/useEnvironmentTheme";
 import {
   getClientSettings,
   updateClientSettings,
   useClientSettings,
 } from "../../hooks/useSettings";
+import { useTheme } from "../../hooks/useTheme";
 import {
   CustomSoundError,
   exportCustomSoundPack,
@@ -34,7 +52,10 @@ import {
 import { playSnapShotSound } from "../../lib/snapShotSound";
 import { decodeCustomSound, previewSoundEvent, soundEventEnabled } from "../../lib/soundEngine";
 import { SOUND_EVENT_LABELS, SOUND_PACK_LABELS } from "../../lib/soundLabels";
+import { randomUUID } from "../../lib/utils";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Radio, RadioGroup } from "../ui/radio-group";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -71,6 +92,39 @@ const FILE_ERRORS = {
 };
 
 const isCustomSoundError = Schema.is(CustomSoundError);
+
+interface ThemeOption {
+  readonly id: string;
+  readonly label: string;
+}
+
+interface SoundThemeDraft {
+  readonly id: string | null;
+  readonly name: string;
+  readonly themeId: string;
+  readonly soundPack: SoundPackId;
+  readonly settleManualSound: string;
+  readonly settleAutomaticSound: string;
+  readonly autoApplyWithTheme: boolean;
+}
+
+function useAvailableThemeOptions(): ReadonlyArray<ThemeOption> {
+  const gt = useGT();
+  const customThemes = useCustomThemes();
+  const environmentThemes = useEnvironmentThemeDefinitions();
+  const seen = new Set<string>(["system", "light", "dark"]);
+  const options: ThemeOption[] = [
+    { id: "system", label: gt("T3 Code (System)") },
+    { id: "light", label: gt("T3 Code (Light)") },
+    { id: "dark", label: gt("T3 Code (Dark)") },
+  ];
+  for (const theme of [...BUILT_IN_THEMES, ...customThemes, ...environmentThemes]) {
+    if (seen.has(theme.id)) continue;
+    seen.add(theme.id);
+    options.push({ id: theme.id, label: theme.label });
+  }
+  return options;
+}
 
 function volumeSliderStyle(value: number): CSSProperties {
   const ratio = value / MAX_SOUND_VOLUME;
@@ -181,12 +235,15 @@ function EventVolumeControl(props: {
 function SettleSoundPicker(props: {
   readonly label: string;
   readonly value: string;
+  readonly packLabel: string;
   readonly available: ReadonlyArray<string>;
   readonly onChange: (value: string) => void;
 }) {
   const gt = useGT();
+  const isPackDefault = props.value === SETTLE_SOUND_PACK_DEFAULT;
+  const isCustomFile = props.value.length > 0 && !isPackDefault;
   const options =
-    props.value && !props.available.includes(props.value)
+    isCustomFile && !props.available.includes(props.value)
       ? [...props.available, props.value]
       : props.available;
   return (
@@ -198,14 +255,19 @@ function SettleSoundPicker(props: {
     >
       <SelectTrigger size="sm" className="w-full sm:w-56" aria-label={props.label}>
         <SelectValue>
-          {props.value
-            ? props.available.includes(props.value)
-              ? props.value
-              : gt("{file} (missing)", { file: props.value })
-            : gt("Off")}
+          {isPackDefault
+            ? gt("Pack default ({pack})", { pack: props.packLabel })
+            : isCustomFile
+              ? props.available.includes(props.value)
+                ? props.value
+                : gt("{file} (missing)", { file: props.value })
+              : gt("Off")}
         </SelectValue>
       </SelectTrigger>
       <SelectPopup align="end" alignItemWithTrigger={false}>
+        <SelectItem hideIndicator value={SETTLE_SOUND_PACK_DEFAULT}>
+          {gt("Pack default ({pack})", { pack: props.packLabel })}
+        </SelectItem>
         <SelectItem hideIndicator value={SETTLE_OFF}>
           {gt("Off")}
         </SelectItem>
@@ -216,6 +278,297 @@ function SettleSoundPicker(props: {
         ))}
       </SelectPopup>
     </Select>
+  );
+}
+
+function SoundThemeConfigsSection(props: {
+  readonly availableSettleSounds: ReadonlyArray<string>;
+}) {
+  const gt = useGT();
+  const m = useMessages();
+  const setting = useSearchableSetting();
+  const { theme } = useTheme();
+  const themeOptions = useAvailableThemeOptions();
+  const soundPack = useClientSettings((settings) => settings.soundPack);
+  const settleSounds = useClientSettings((settings) => settings.settleSounds);
+  const configs = useClientSettings((settings) => settings.soundThemeConfigs);
+  const [draft, setDraft] = useState<SoundThemeDraft | null>(null);
+
+  const themeLabelFor = (themeId: string) =>
+    themeOptions.find((option) => option.id === themeId)?.label ?? themeId;
+
+  const describeSettle = (config: SoundThemeConfig) => {
+    if (
+      config.settleManualSound === SETTLE_SOUND_PACK_DEFAULT &&
+      config.settleAutomaticSound === SETTLE_SOUND_PACK_DEFAULT
+    ) {
+      return gt("Pack settle sounds");
+    }
+    if (config.settleManualSound === "" && config.settleAutomaticSound === "") {
+      return gt("Settle sounds off");
+    }
+    if (config.settleManualSound === config.settleAutomaticSound && config.settleManualSound) {
+      return config.settleManualSound;
+    }
+    return gt("Custom settle sounds");
+  };
+
+  const openNewDraft = () => {
+    setDraft({
+      id: null,
+      name: "",
+      themeId: theme,
+      soundPack,
+      settleManualSound: settleSounds.manualSound,
+      settleAutomaticSound: settleSounds.automaticSound,
+      autoApplyWithTheme: true,
+    });
+  };
+
+  const openEditDraft = (config: SoundThemeConfig) => {
+    setDraft({
+      id: config.id,
+      name: config.name,
+      themeId: config.themeId,
+      soundPack: config.soundPack,
+      settleManualSound: config.settleManualSound,
+      settleAutomaticSound: config.settleAutomaticSound,
+      autoApplyWithTheme: config.autoApplyWithTheme,
+    });
+  };
+
+  const saveDraft = () => {
+    if (!draft) return;
+    const trimmedName = draft.name.trim();
+    if (!trimmedName) return;
+    const nextConfig: SoundThemeConfig = {
+      id: draft.id ?? randomUUID(),
+      name: trimmedName,
+      themeId: draft.themeId,
+      soundPack: draft.soundPack,
+      settleManualSound: draft.settleManualSound,
+      settleAutomaticSound: draft.settleAutomaticSound,
+      autoApplyWithTheme: draft.autoApplyWithTheme,
+    };
+    const nextConfigs =
+      draft.id === null
+        ? [...configs, nextConfig]
+        : configs.map((item) => (item.id === draft.id ? nextConfig : item));
+    void updateClientSettings({ soundThemeConfigs: nextConfigs });
+    setDraft(null);
+  };
+
+  const removeConfig = (id: string) => {
+    void updateClientSettings({
+      soundThemeConfigs: configs.filter((item) => item.id !== id),
+    });
+    if (draft?.id === id) setDraft(null);
+  };
+
+  const toggleAutoApply = (id: string, autoApplyWithTheme: boolean) => {
+    void updateClientSettings({
+      soundThemeConfigs: configs.map((item) =>
+        item.id === id ? { ...item, autoApplyWithTheme } : item,
+      ),
+    });
+  };
+
+  const draftThemeOptions =
+    draft && !themeOptions.some((option) => option.id === draft.themeId)
+      ? [...themeOptions, { id: draft.themeId, label: draft.themeId }]
+      : themeOptions;
+
+  return (
+    <SettingsSection id="sounds-theme-configs" title={gt("Theme & sound configs")}>
+      <SettingsRow
+        {...setting("sounds-theme-configs")}
+        description={gt(
+          "Pair a UI theme with a sound pack and saved settle sounds. Switching to a linked theme applies its sounds automatically.",
+        )}
+        devicePreference
+        control={
+          <Button variant="outline" size="sm" onClick={openNewDraft}>
+            <PlusIcon aria-hidden />
+            {gt("New config")}
+          </Button>
+        }
+      />
+
+      {configs.length > 0 && (
+        <ul className="divide-y divide-border/60 border-t border-border/60">
+          {configs.map((config) => {
+            const active = isSoundThemeConfigActive(config, theme, {
+              soundPack,
+              settleSounds,
+            });
+            return (
+              <li
+                key={config.id}
+                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 py-2.5 sm:px-4"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{config.name}</span>
+                    {active && (
+                      <Badge variant="secondary">
+                        <CheckIcon className="size-3" aria-hidden />
+                        {gt("Active")}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {themeLabelFor(config.themeId)} · {m(SOUND_PACK_LABELS[config.soundPack])} ·{" "}
+                    {describeSettle(config)}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                    <Switch
+                      size="sm"
+                      checked={config.autoApplyWithTheme}
+                      aria-label={gt("Auto-apply {name} when theme is selected", {
+                        name: config.name,
+                      })}
+                      onCheckedChange={(checked) => toggleAutoApply(config.id, checked)}
+                    />
+                    <span>{gt("Link to theme")}</span>
+                  </label>
+                  <Button
+                    variant={active ? "secondary" : "outline"}
+                    size="xs"
+                    aria-label={gt("Apply {name}", { name: config.name })}
+                    onClick={() => void applySoundThemeConfig(config, { preview: true })}
+                  >
+                    {gt("Apply")}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    aria-label={gt("Edit {name}", { name: config.name })}
+                    onClick={() => openEditDraft(config)}
+                  >
+                    <PencilIcon aria-hidden />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    aria-label={gt("Delete {name}", { name: config.name })}
+                    onClick={() => removeConfig(config.id)}
+                  >
+                    <Trash2Icon aria-hidden />
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {draft && (
+        <div className="space-y-3 border-t border-border/60 bg-muted/20 px-3 py-3 sm:px-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label
+                htmlFor="sound-theme-config-name"
+                className="text-xs font-medium text-foreground"
+              >
+                {gt("Config name")}
+              </label>
+              <Input
+                id="sound-theme-config-name"
+                size="sm"
+                placeholder={gt("e.g. Transformers")}
+                value={draft.name}
+                onChange={(event) => setDraft({ ...draft, name: event.currentTarget.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-foreground">{gt("UI theme")}</div>
+              <Select
+                value={draft.themeId}
+                onValueChange={(value) => {
+                  if (typeof value === "string") setDraft({ ...draft, themeId: value });
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full" aria-label={gt("Config UI theme")}>
+                  <SelectValue>{themeLabelFor(draft.themeId)}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  {draftThemeOptions.map((option) => (
+                    <SelectItem key={option.id} hideIndicator value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-foreground">{gt("Sound pack")}</div>
+              <Select
+                value={draft.soundPack}
+                onValueChange={(value) => {
+                  const selected = SOUND_PACK_IDS.find((candidate) => candidate === value);
+                  if (selected) setDraft({ ...draft, soundPack: selected });
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full" aria-label={gt("Config sound pack")}>
+                  <SelectValue>{m(SOUND_PACK_LABELS[draft.soundPack])}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  {SOUND_PACK_IDS.map((option) => (
+                    <SelectItem key={option} hideIndicator value={option}>
+                      {m(SOUND_PACK_LABELS[option])}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-foreground">{gt("Manual settle sound")}</div>
+              <SettleSoundPicker
+                label={gt("Config manual settle sound")}
+                value={draft.settleManualSound}
+                packLabel={m(SOUND_PACK_LABELS[draft.soundPack])}
+                available={props.availableSettleSounds}
+                onChange={(settleManualSound) => setDraft({ ...draft, settleManualSound })}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-foreground">
+                {gt("Automatic settle sound")}
+              </div>
+              <SettleSoundPicker
+                label={gt("Config automatic settle sound")}
+                value={draft.settleAutomaticSound}
+                packLabel={m(SOUND_PACK_LABELS[draft.soundPack])}
+                available={props.availableSettleSounds}
+                onChange={(settleAutomaticSound) => setDraft({ ...draft, settleAutomaticSound })}
+              />
+            </div>
+            <div className="flex items-end">
+              <label className="flex cursor-pointer items-center gap-2 py-1.5 text-sm text-foreground">
+                <Switch
+                  size="sm"
+                  checked={draft.autoApplyWithTheme}
+                  onCheckedChange={(autoApplyWithTheme) =>
+                    setDraft({ ...draft, autoApplyWithTheme })
+                  }
+                />
+                <span>{gt("Auto-apply when switching to this theme")}</span>
+              </label>
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
+              {gt("Cancel")}
+            </Button>
+            <Button size="sm" disabled={draft.name.trim().length === 0} onClick={saveDraft}>
+              {draft.id === null ? gt("Save config") : gt("Update config")}
+            </Button>
+          </div>
+        </div>
+      )}
+    </SettingsSection>
   );
 }
 
@@ -303,6 +656,8 @@ export function SoundsSettingsPanel() {
     }
   };
 
+  const packLabel = m(SOUND_PACK_LABELS[pack]);
+
   const renderEventRow = (event: SoundEventId) => {
     const label = m(SOUND_EVENT_LABELS[event]);
     const customName = customNames?.[event];
@@ -331,7 +686,7 @@ export function SoundsSettingsPanel() {
           <div className="min-w-0">
             <div className="text-sm font-medium text-foreground">{label}</div>
             <div className="text-xs wrap-anywhere text-muted-foreground">
-              {customName ?? gt("Pack default ({pack})", { pack: m(SOUND_PACK_LABELS[pack]) })}
+              {customName ?? gt("Pack default ({pack})", { pack: packLabel })}
             </div>
           </div>
         </div>
@@ -432,7 +787,7 @@ export function SoundsSettingsPanel() {
       <SettingsSection id="sounds-defaults" title={gt("Defaults")}>
         <SettingsRow
           {...setting("notification-sound-pack")}
-          description={gt("Default sound theme for notification and dictation cues.")}
+          description={gt("Default sound theme for notification, settle, and dictation cues.")}
           devicePreference
           control={
             <Popover>
@@ -440,7 +795,7 @@ export function SoundsSettingsPanel() {
                 render={<Button variant="outline" size="sm" />}
                 aria-label={gt("Sound pack")}
               >
-                {m(SOUND_PACK_LABELS[pack])}
+                {packLabel}
                 <ChevronDownIcon aria-hidden />
               </PopoverTrigger>
               <PopoverPopup align="end" width="sm" padding="compact" aria-label={gt("Sound pack")}>
@@ -543,11 +898,13 @@ export function SoundsSettingsPanel() {
         />
       </SettingsSection>
 
+      <SoundThemeConfigsSection availableSettleSounds={availableSettleSounds} />
+
       <SettingsSection id="settle-sounds" title={gt("Settle sounds")}>
         <SettingsRow
           {...setting("settle-sounds")}
           description={gt(
-            "Play a sound when a thread settles. Also in the chat header. Files come from the sounds folder inside your T3 Code data folder.",
+            "Play a sound when a thread settles. Also in the chat header. Defaults follow your sound pack; saved files live in the sounds folder inside your T3 Code data folder.",
           )}
           devicePreference
           control={
@@ -567,6 +924,7 @@ export function SoundsSettingsPanel() {
               <SettleSoundPicker
                 label={gt("Manual settle sound")}
                 value={settleSounds.manualSound}
+                packLabel={packLabel}
                 available={availableSettleSounds}
                 onChange={(manualSound) => saveSettle({ manualSound })}
               />
@@ -575,7 +933,12 @@ export function SoundsSettingsPanel() {
                 label={gt("When you settle a thread")}
                 masterVolume={masterVolume}
                 overrideVolume={soundEventVolumes["settle-manual"]}
-                onPreview={(volume) => previewSettleSound(settleSounds.manualSound, volume / 100)}
+                onPreview={(volume) =>
+                  previewSettleSound(settleSounds.manualSound, volume / 100, {
+                    kind: "manual",
+                    pack,
+                  })
+                }
               />
               <Button
                 size="xs"
@@ -583,7 +946,10 @@ export function SoundsSettingsPanel() {
                 disabled={!settleSounds.manualSound || manualSettleVolume === 0}
                 aria-label={gt("Play manual settle sound")}
                 onClick={() =>
-                  previewSettleSound(settleSounds.manualSound, manualSettleVolume / 100)
+                  previewSettleSound(settleSounds.manualSound, manualSettleVolume / 100, {
+                    kind: "manual",
+                    pack,
+                  })
                 }
               >
                 <PlayIcon aria-hidden />
@@ -603,6 +969,7 @@ export function SoundsSettingsPanel() {
               <SettleSoundPicker
                 label={gt("Automatic settle sound")}
                 value={settleSounds.automaticSound}
+                packLabel={packLabel}
                 available={availableSettleSounds}
                 onChange={(automaticSound) => saveSettle({ automaticSound })}
               />
@@ -612,7 +979,10 @@ export function SoundsSettingsPanel() {
                 masterVolume={masterVolume}
                 overrideVolume={soundEventVolumes["settle-automatic"]}
                 onPreview={(volume) =>
-                  previewSettleSound(settleSounds.automaticSound, volume / 100)
+                  previewSettleSound(settleSounds.automaticSound, volume / 100, {
+                    kind: "automatic",
+                    pack,
+                  })
                 }
               />
               <Button
@@ -621,7 +991,10 @@ export function SoundsSettingsPanel() {
                 disabled={!settleSounds.automaticSound || automaticSettleVolume === 0}
                 aria-label={gt("Play automatic settle sound")}
                 onClick={() =>
-                  previewSettleSound(settleSounds.automaticSound, automaticSettleVolume / 100)
+                  previewSettleSound(settleSounds.automaticSound, automaticSettleVolume / 100, {
+                    kind: "automatic",
+                    pack,
+                  })
                 }
               >
                 <PlayIcon aria-hidden />

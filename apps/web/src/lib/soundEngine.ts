@@ -7,6 +7,7 @@ import {
   type SoundEventId,
   type SoundFocusPolicy,
   type SoundPackId,
+  type SynthesizedSoundEventId,
 } from "@t3tools/contracts/settings";
 
 import completionUrl from "../assets/notification-completion.mp3";
@@ -372,6 +373,25 @@ export async function previewSoundEvent(
     }
   } catch {
     // Preview is best effort when browser audio is unavailable.
+  }
+}
+
+export async function playPackSynthesizedEvent(
+  event: SynthesizedSoundEventId,
+  pack: SoundPackId,
+  volume = DEFAULT_SOUND_VOLUME,
+): Promise<void> {
+  if (volume <= 0) return;
+  try {
+    const output = getAudio();
+    await wakeAudio(output);
+    if (output.context.state === "running") {
+      play(output, volume, (destination, ended) =>
+        playSynthesizedSound(output.context, destination, pack, event, ended),
+      );
+    }
+  } catch {
+    // Sound playback is best effort when browser audio is unavailable.
   }
 }
 

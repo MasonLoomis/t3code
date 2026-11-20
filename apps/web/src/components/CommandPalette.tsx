@@ -556,7 +556,8 @@ function OpenCommandPaletteDialog(props: {
     activeThread: activeThread ?? null,
     query: deferredQuery,
   });
-  const { toggleSoundItem, changeSoundPackItem } = useCommandPaletteSoundItems();
+  const { toggleSoundItem, changeSoundPackItem, soundThemeConfigItem } =
+    useCommandPaletteSoundItems();
   const currentView = viewStack.at(-1)?.view ?? null;
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
   const [browseGeneration, setBrowseGeneration] = useState(0);
@@ -1676,6 +1677,7 @@ function OpenCommandPaletteDialog(props: {
   actionItems.push(changeThemeItem);
   actionItems.push(changeAppearanceItem);
   actionItems.push(toggleSoundItem, changeSoundPackItem);
+  if (soundThemeConfigItem) actionItems.push(soundThemeConfigItem);
 
   actionItems.push(themeEditorItem);
 

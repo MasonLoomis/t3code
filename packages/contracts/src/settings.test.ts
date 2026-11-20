@@ -21,6 +21,7 @@ import {
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
   resolveSoundVolume,
+  SETTLE_SOUND_PACK_DEFAULT,
   ServerSettings,
   ServerSettingsPatch,
   withIdleCompaction,
@@ -565,6 +566,9 @@ describe("sound settings", () => {
     expect(defaults.soundFocusPolicy).toBe("always");
     expect(defaults.soundEvents).toEqual({});
     expect(defaults.soundEventVolumes).toEqual({});
+    expect(defaults.soundThemeConfigs).toEqual([]);
+    expect(defaults.settleSounds.manualSound).toBe(SETTLE_SOUND_PACK_DEFAULT);
+    expect(defaults.settleSounds.automaticSound).toBe(SETTLE_SOUND_PACK_DEFAULT);
     expect(resolveSoundVolume("completion", defaults)).toBe(80);
     expect(
       resolveSoundVolume("settle-manual", {
@@ -580,6 +584,17 @@ describe("sound settings", () => {
         soundFocusPolicy: "background-threads",
         soundEvents: { approval: true, "voice-start": true, completion: false },
         soundEventVolumes: { approval: 100, "snap-shot": 40, "settle-manual": 55 },
+        soundThemeConfigs: [
+          {
+            id: "transformers",
+            name: "Transformers",
+            themeId: "transformers",
+            soundPack: "retro",
+            settleManualSound: "Transformers-G1-Scene-Transition.wav",
+            settleAutomaticSound: "Transformers-G1-Transformation.wav",
+            autoApplyWithTheme: true,
+          },
+        ],
       }),
     ).toEqual({
       soundPack: "galactic",
@@ -587,6 +602,17 @@ describe("sound settings", () => {
       soundFocusPolicy: "background-threads",
       soundEvents: { approval: true, "voice-start": true, completion: false },
       soundEventVolumes: { approval: 100, "snap-shot": 40, "settle-manual": 55 },
+      soundThemeConfigs: [
+        {
+          id: "transformers",
+          name: "Transformers",
+          themeId: "transformers",
+          soundPack: "retro",
+          settleManualSound: "Transformers-G1-Scene-Transition.wav",
+          settleAutomaticSound: "Transformers-G1-Transformation.wav",
+          autoApplyWithTheme: true,
+        },
+      ],
     });
 
     expect(() => decodeClientSettingsPatch({ soundVolume: 105 })).toThrow();

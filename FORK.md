@@ -19,14 +19,18 @@ issue against `pingdotgg/t3code` from this fork.
 - **Settle sounds.** Settling a thread yourself plays one sound. A thread that settles any other
   way plays a second sound: auto-settle after a pull request merges or after the idle-days limit,
   an agent settling threads (for example with `t3_thread_organize`), or a settle from another
-  device. The speaker button in the chat header turns the sounds on and off. **Settings → Sounds**
-  picks the file for each kind (or Off) and lets each use master volume or a custom override. Both
-  settings stay on this device.
-- **Your own sound files.** The app plays files from `%USERPROFILE%\.t3\userdata\sounds`
-  (`.wav`, `.mp3`, `.ogg`, `.m4a`, `.flac`, `.webm`, up to 20 MB). The defaults are
-  `Transformers-G1-Scene-Transition.wav` for your own settles and
-  `Transformers-G1-Transformation.wav` for the rest. Your settle clips stay in that folder. With
-  the folder empty or missing, settle sounds are silent.
+  device. By default both settle cues match your active sound pack; **Settings → Sounds** also
+  lets you pick any saved file from `%USERPROFILE%\.t3\userdata\sounds` (or Off) and set per-sound
+  volume overrides. The speaker button in the chat header turns settle sounds on and off.
+- **Theme & sound configs.** **Settings → Sounds → Theme & sound configs** lets you pair any UI
+  theme (built-in or custom) with a sound pack and settle sounds (for example, a Transformers
+  theme paired with saved Transformers `.wav` settle sounds). Configs can be applied in one click
+  from Settings or the command palette, or linked to auto-apply whenever you switch to that UI
+  theme.
+- **Your own sound files.** Saved settle sound files live in `%USERPROFILE%\.t3\userdata\sounds`
+  (`.wav`, `.mp3`, `.ogg`, `.m4a`, `.flac`, `.webm`, up to 20 MB), so files like
+  `Transformers-G1-Scene-Transition.wav` and `Transformers-G1-Transformation.wav` remain available
+  in the settle sound pickers and Theme & sound configs.
 - **Updates come from this fork.** The installer's updater reads releases from
   `MasonLoomis/t3code`, so the official updater cannot replace the fork. Only the stable track
   exists here; switching the app to nightly finds no updates.

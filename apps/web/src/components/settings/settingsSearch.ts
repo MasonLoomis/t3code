@@ -753,6 +753,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("custom audio upload import export dictation sounds by event")],
   },
   {
+    id: "sounds-theme-configs",
+    title: msg("Theme & sound configs"),
+    to: "/settings/sounds",
+    searchTerms: [msg("theme sound pack link pair preset profile transformers")],
+  },
+  {
     id: "settle-sounds",
     title: msg("Settle sounds"),
     to: "/settings/sounds",

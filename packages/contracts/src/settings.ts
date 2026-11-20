@@ -28,7 +28,13 @@ import { SecretProviderId, SecretProviderSlug } from "./secretReference.ts";
 import { containsSecretReference, SettingsSecretValue } from "./settingsSecretValue.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
-import { SettleSoundSettings, settleSoundsSetting } from "./settleSounds.ts";
+import {
+  SETTLE_SOUND_PACK_DEFAULT,
+  SettleSoundSettings,
+  settleSoundsSetting,
+} from "./settleSounds.ts";
+
+export { SETTLE_SOUND_PACK_DEFAULT };
 import {
   CustomModelSetting,
   DEFAULT_TEXT_GENERATION_MODEL,
@@ -308,6 +314,9 @@ const SOUND_EVENT_IDS = [
 ] as const;
 export type SoundEventId = (typeof SOUND_EVENT_IDS)[number];
 
+export type SettleSoundEventId = "settle-manual" | "settle-automatic";
+export type SynthesizedSoundEventId = SoundEventId | SettleSoundEventId;
+
 export const CUSTOM_SOUND_CLIP_IDS = [...SOUND_EVENT_IDS, "snap-shot"] as const;
 export type CustomSoundClipId = (typeof CUSTOM_SOUND_CLIP_IDS)[number];
 
@@ -317,6 +326,21 @@ const SOUND_VOLUME_EVENT_IDS = [
   "settle-automatic",
 ] as const;
 export type SoundVolumeEventId = (typeof SOUND_VOLUME_EVENT_IDS)[number];
+
+export const SoundThemeConfig = Schema.Struct({
+  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  themeId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  soundPack: SoundPackId,
+  settleManualSound: Schema.String.check(Schema.isMaxLength(255)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
+  ),
+  settleAutomaticSound: Schema.String.check(Schema.isMaxLength(255)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(SETTLE_SOUND_PACK_DEFAULT)),
+  ),
+  autoApplyWithTheme: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+});
+export type SoundThemeConfig = typeof SoundThemeConfig.Type;
 
 export const DEFAULT_SOUND_EVENT_ENABLED: Readonly<Record<SoundEventId, boolean>> = {
   completion: true,
@@ -504,6 +528,10 @@ export const ClientSettingsSchema = Schema.Struct({
   soundEvents: SoundEventOverrides.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Sparse per-event volume overrides (0-100). Missing keys inherit soundVolume.
   soundEventVolumes: SoundEventVolumeOverrides.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Saved UI theme + sound pack + settle sound pairings.
+  soundThemeConfigs: Schema.Array(SoundThemeConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   diffColorScheme: DiffColorScheme.pipe(
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
@@ -2155,6 +2183,7 @@ export const ClientSettingsPatch = Schema.Struct({
   soundFocusPolicy: Schema.optionalKey(SoundFocusPolicy),
   soundEvents: Schema.optionalKey(SoundEventOverrides),
   soundEventVolumes: Schema.optionalKey(SoundEventVolumeOverrides),
+  soundThemeConfigs: Schema.optionalKey(Schema.Array(SoundThemeConfig)),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   chatWidth: Schema.optionalKey(ChatWidth),
