@@ -88,6 +88,10 @@ function watchGuideRun(
     }
     const store = useGuideRunStore.getState();
     store.settle(runKey);
+    const mode = getClientSettings().notificationMode;
+    if (hasNotificationSound(mode)) {
+      playNotificationSound(failure === null ? "completion" : "failed", () => isGuideShown(runKey));
+    }
     const looking = document.visibilityState === "visible" && document.hasFocus();
     if (looking && isGuideShown(runKey)) return;
 
@@ -110,12 +114,6 @@ function watchGuideRun(
         },
       });
     };
-    const mode = getClientSettings().notificationMode;
-    if (hasNotificationSound(mode)) {
-      void playNotificationSound(failure === null ? "completion" : "input", () =>
-        hasNotificationSound(getClientSettings().notificationMode),
-      );
-    }
     if (looking) {
       const toastId = toastManager.add({
         type: failure === null ? "success" : "error",

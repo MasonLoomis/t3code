@@ -1,5 +1,6 @@
 // Fork-only (MasonLoomis/t3code): the Sounds settings section. See FORK.md.
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { useGT } from "gt-react";
 import { useEffect, useState } from "react";
 
 import { updateClientSettings, useClientSettings } from "../hooks/useSettings";
@@ -25,6 +26,7 @@ function SoundPicker(props: {
   readonly volume: number;
   readonly onChange: (value: string) => void;
 }) {
+  const gt = useGT();
   const options =
     props.value && !props.available.includes(props.value)
       ? [...props.available, props.value]
@@ -42,13 +44,13 @@ function SoundPicker(props: {
             {props.value
               ? props.available.includes(props.value)
                 ? props.value
-                : `${props.value} (missing)`
-              : "Off"}
+                : gt("{file} (missing)", { file: props.value })
+              : gt("Off")}
           </SelectValue>
         </SelectTrigger>
         <SelectPopup align="end" alignItemWithTrigger={false}>
           <SelectItem hideIndicator value={OFF}>
-            Off
+            {gt("Off")}
           </SelectItem>
           {options.map((name) => (
             <SelectItem key={name} hideIndicator value={name}>
@@ -63,13 +65,14 @@ function SoundPicker(props: {
         disabled={!props.value}
         onClick={() => previewSettleSound(props.value, props.volume)}
       >
-        Play
+        {gt("Play")}
       </Button>
     </div>
   );
 }
 
 export function SettleSoundSettingsSection() {
+  const gt = useGT();
   const settings = useClientSettings((current) => current.settleSounds);
   const [available, setAvailable] = useState<ReadonlyArray<string>>([]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the server's sounds folder once when the section mounts
@@ -86,26 +89,26 @@ export function SettleSoundSettingsSection() {
     void updateClientSettings({ settleSounds: { ...settings, ...patch } });
 
   return (
-    <SettingsSection id="settle-sounds" title="Sounds">
+    <SettingsSection id="settle-sounds" title={gt("Sounds")}>
       <SettingsRow
-        title="Settle sounds"
-        description="Play a sound when a thread settles. Also in the chat header."
+        title={gt("Settle sounds")}
+        description={gt("Play a sound when a thread settles. Also in the chat header.")}
         devicePreference
         control={
           <Switch
             checked={settings.enabled}
             onCheckedChange={(checked) => save({ enabled: checked })}
-            aria-label="Settle sounds"
+            aria-label={gt("Settle sounds")}
           />
         }
       />
       <SettingsRow
-        title="When you settle a thread"
-        description="Plays when you settle a thread from this app."
+        title={gt("When you settle a thread")}
+        description={gt("Plays when you settle a thread from this app.")}
         devicePreference
         control={
           <SoundPicker
-            label="Manual settle sound"
+            label={gt("Manual settle sound")}
             value={settings.manualSound}
             available={available}
             volume={settings.volume}
@@ -114,12 +117,14 @@ export function SettleSoundSettingsSection() {
         }
       />
       <SettingsRow
-        title="When T3 Code settles a thread"
-        description="Plays when a thread settles on its own: after a merge, after idle days, or when an agent or another device settles it."
+        title={gt("When T3 Code settles a thread")}
+        description={gt(
+          "Plays when a thread settles on its own: after a merge, after idle days, or when an agent or another device settles it.",
+        )}
         devicePreference
         control={
           <SoundPicker
-            label="Automatic settle sound"
+            label={gt("Automatic settle sound")}
             value={settings.automaticSound}
             available={available}
             volume={settings.volume}
@@ -128,8 +133,8 @@ export function SettleSoundSettingsSection() {
         }
       />
       <SettingsRow
-        title="Volume"
-        description="Sound files live in the sounds folder inside your T3 Code data folder."
+        title={gt("Volume")}
+        description={gt("Sound files live in the sounds folder inside your T3 Code data folder.")}
         devicePreference
         control={
           <input
@@ -138,7 +143,7 @@ export function SettleSoundSettingsSection() {
             max={100}
             step={5}
             value={Math.round(settings.volume * 100)}
-            aria-label="Settle sound volume"
+            aria-label={gt("Settle sound volume")}
             className="w-full accent-primary sm:w-56"
             onChange={(event) => save({ volume: Number(event.currentTarget.value) / 100 })}
           />
