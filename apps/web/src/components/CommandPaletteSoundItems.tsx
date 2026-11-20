@@ -1,8 +1,10 @@
 import { SOUND_PACK_IDS } from "@t3tools/contracts/settings";
 import { useGT, useMessages } from "gt-react";
-import { CheckIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import { CheckIcon, PaletteIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 
+import { applySoundThemeConfig, isSoundThemeConfigActive } from "../fork/soundThemeLinks";
 import { getClientSettings, updateClientSettings, useClientSettings } from "../hooks/useSettings";
+import { useTheme } from "../hooks/useTheme";
 import { previewSoundEvent } from "../lib/soundEngine";
 import { SOUND_PACK_LABELS } from "../lib/soundLabels";
 import {
@@ -22,6 +24,9 @@ export function useCommandPaletteSoundItems() {
   const m = useMessages();
   const soundOn = useClientSettings((settings) => hasNotificationSound(settings.notificationMode));
   const selectedPack = useClientSettings((settings) => settings.soundPack);
+  const settleSounds = useClientSettings((settings) => settings.settleSounds);
+  const soundThemeConfigs = useClientSettings((settings) => settings.soundThemeConfigs);
+  const { theme } = useTheme();
   const toggleSoundItem: CommandPaletteActionItem = {
     kind: "action",
     value: "action:toggle-notification-sound",
@@ -78,5 +83,48 @@ export function useCommandPaletteSoundItems() {
       },
     ],
   };
-  return { toggleSoundItem, changeSoundPackItem };
+  const soundThemeConfigItem: CommandPaletteSubmenuItem | null =
+    soundThemeConfigs.length > 0
+      ? {
+          kind: "submenu",
+          value: "action:switch-sound-theme-config",
+          title: gt("Switch theme & sound config"),
+          searchTerms: [
+            gt("theme sound pack preset profile config"),
+            ...soundThemeConfigs.map((config) => config.name),
+          ],
+          icon: <PaletteIcon className={ITEM_ICON_CLASS} />,
+          addonIcon: <Volume2Icon className={ADDON_ICON_CLASS} />,
+          groups: [
+            {
+              value: "sound-theme-configs",
+              label: gt("Theme & sound configs"),
+              items: soundThemeConfigs.map((config) => {
+                const active = isSoundThemeConfigActive(config, theme, {
+                  soundPack: selectedPack,
+                  settleSounds,
+                });
+                return {
+                  kind: "action",
+                  value: `sound-theme-config:${config.id}`,
+                  title: config.name,
+                  description: m(SOUND_PACK_LABELS[config.soundPack]),
+                  searchTerms: [
+                    config.name,
+                    config.themeId,
+                    m(SOUND_PACK_LABELS[config.soundPack]),
+                  ],
+                  icon: active ? (
+                    <CheckIcon className={ITEM_ICON_CLASS} aria-label={gt("Active config")} />
+                  ) : (
+                    <PaletteIcon className={ITEM_ICON_CLASS} />
+                  ),
+                  run: () => applySoundThemeConfig(config, { preview: true }),
+                };
+              }),
+            },
+          ],
+        }
+      : null;
+  return { toggleSoundItem, changeSoundPackItem, soundThemeConfigItem };
 }

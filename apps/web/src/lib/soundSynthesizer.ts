@@ -1,4 +1,4 @@
-import type { SoundEventId, SoundPackId } from "@t3tools/contracts/settings";
+import type { SoundPackId, SynthesizedSoundEventId } from "@t3tools/contracts/settings";
 
 interface SynthNote {
   readonly type: OscillatorType;
@@ -79,7 +79,7 @@ function scheduleNotes(
   return maxEnd;
 }
 
-const DEFAULT_EXTRAS: Readonly<Record<SoundEventId, ReadonlyArray<SynthNote>>> = {
+const DEFAULT_EXTRAS: Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<SynthNote>>> = {
   completion: [
     { type: "sine", freq: 587.33, start: 0, duration: 0.14, gain: 0.22 },
     { type: "sine", freq: 880, start: 0.09, duration: 0.24, gain: 0.24 },
@@ -120,9 +120,17 @@ const DEFAULT_EXTRAS: Readonly<Record<SoundEventId, ReadonlyArray<SynthNote>>> =
   "voice-error": [
     { type: "triangle", freq: 293.66, endFreq: 220, start: 0, duration: 0.12, gain: 0.2 },
   ],
+  "settle-manual": [
+    { type: "sine", freq: 659.25, start: 0, duration: 0.11, gain: 0.2 },
+    { type: "sine", freq: 440, start: 0.08, duration: 0.22, gain: 0.22 },
+  ],
+  "settle-automatic": [
+    { type: "sine", freq: 523.25, start: 0, duration: 0.1, gain: 0.16, attack: 0.012 },
+    { type: "sine", freq: 392, start: 0.08, duration: 0.2, gain: 0.16, attack: 0.012 },
+  ],
 };
 
-const MINIMAL_PACK: Readonly<Record<SoundEventId, ReadonlyArray<SynthNote>>> = {
+const MINIMAL_PACK: Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<SynthNote>>> = {
   completion: [
     { type: "sine", freq: 528, start: 0, duration: 0.22, gain: 0.18, attack: 0.015 },
     { type: "sine", freq: 792, start: 0.1, duration: 0.28, gain: 0.14, attack: 0.02 },
@@ -158,9 +166,24 @@ const MINIMAL_PACK: Readonly<Record<SoundEventId, ReadonlyArray<SynthNote>>> = {
   "voice-error": [
     { type: "sine", freq: 261.63, endFreq: 220, start: 0, duration: 0.12, gain: 0.16 },
   ],
+  "settle-manual": [
+    { type: "sine", freq: 528, start: 0, duration: 0.14, gain: 0.15, attack: 0.012 },
+    { type: "sine", freq: 396, start: 0.09, duration: 0.24, gain: 0.14, attack: 0.016 },
+  ],
+  "settle-automatic": [
+    {
+      type: "sine",
+      freq: 440,
+      endFreq: 330,
+      start: 0,
+      duration: 0.22,
+      gain: 0.13,
+      attack: 0.015,
+    },
+  ],
 };
 
-const RETRO_PACK: Readonly<Record<SoundEventId, ReadonlyArray<SynthNote>>> = {
+const RETRO_PACK: Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<SynthNote>>> = {
   completion: [
     { type: "square", freq: 523.25, start: 0, duration: 0.07, gain: 0.12, filterFreq: 2400 },
     { type: "square", freq: 659.25, start: 0.07, duration: 0.07, gain: 0.12, filterFreq: 2400 },
@@ -205,9 +228,18 @@ const RETRO_PACK: Readonly<Record<SoundEventId, ReadonlyArray<SynthNote>>> = {
       filterFreq: 1100,
     },
   ],
+  "settle-manual": [
+    { type: "square", freq: 659.25, start: 0, duration: 0.055, gain: 0.11, filterFreq: 2400 },
+    { type: "square", freq: 523.25, start: 0.055, duration: 0.055, gain: 0.11, filterFreq: 2200 },
+    { type: "square", freq: 392, start: 0.11, duration: 0.12, gain: 0.12, filterFreq: 2000 },
+  ],
+  "settle-automatic": [
+    { type: "square", freq: 523.25, start: 0, duration: 0.055, gain: 0.1, filterFreq: 2000 },
+    { type: "square", freq: 392, start: 0.06, duration: 0.11, gain: 0.1, filterFreq: 1800 },
+  ],
 };
 
-const GALACTIC_PACK: Readonly<Record<SoundEventId, ReadonlyArray<SynthNote>>> = {
+const GALACTIC_PACK: Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<SynthNote>>> = {
   completion: [
     {
       type: "sine",
@@ -380,10 +412,44 @@ const GALACTIC_PACK: Readonly<Record<SoundEventId, ReadonlyArray<SynthNote>>> = 
       filterFreq: 950,
     },
   ],
+  "settle-manual": [
+    {
+      type: "sine",
+      freq: 1180,
+      endFreq: 720,
+      start: 0,
+      duration: 0.11,
+      gain: 0.19,
+      fmFreq: 26,
+      fmDepth: 70,
+    },
+    {
+      type: "triangle",
+      freq: 640,
+      endFreq: 480,
+      start: 0.11,
+      duration: 0.14,
+      gain: 0.16,
+      filterFreq: 1600,
+      filterEndFreq: 750,
+    },
+  ],
+  "settle-automatic": [
+    {
+      type: "sine",
+      freq: 880,
+      endFreq: 560,
+      start: 0,
+      duration: 0.14,
+      gain: 0.16,
+      fmFreq: 20,
+      fmDepth: 45,
+    },
+  ],
 };
 
 const PACKS: Readonly<
-  Record<SoundPackId, Readonly<Record<SoundEventId, ReadonlyArray<SynthNote>>>>
+  Record<SoundPackId, Readonly<Record<SynthesizedSoundEventId, ReadonlyArray<SynthNote>>>>
 > = {
   default: DEFAULT_EXTRAS,
   minimal: MINIMAL_PACK,
@@ -395,7 +461,7 @@ export function playSynthesizedSound(
   context: AudioContext,
   destination: AudioNode,
   pack: SoundPackId,
-  event: SoundEventId,
+  event: SynthesizedSoundEventId,
   ended: () => void,
 ): number {
   return scheduleNotes(context, destination, PACKS[pack][event], ended);
