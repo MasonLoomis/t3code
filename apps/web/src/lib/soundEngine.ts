@@ -1,7 +1,9 @@
 import {
   DEFAULT_SOUND_EVENT_ENABLED,
   DEFAULT_SOUND_VOLUME,
+  resolveSoundVolume,
   type ClientSettings,
+  type CustomSoundClipId,
   type SoundEventId,
   type SoundFocusPolicy,
   type SoundPackId,
@@ -12,7 +14,8 @@ import inputUrl from "../assets/notification-input.mp3";
 import { readCustomSound } from "./customSoundStore";
 import { playSynthesizedSound } from "./soundSynthesizer";
 
-type SoundSettings = Pick<ClientSettings, "soundPack" | "soundVolume" | "soundEvents">;
+type SoundSettings = Pick<ClientSettings, "soundPack" | "soundVolume" | "soundEvents"> &
+  Partial<Pick<ClientSettings, "soundEventVolumes">>;
 type NotificationEvent = Exclude<SoundEventId, `voice-${string}`>;
 type VoiceEvent = Extract<SoundEventId, `voice-${string}`>;
 
@@ -30,7 +33,7 @@ interface AudioOutput {
   readonly context: AudioContext;
   readonly master: GainNode;
   readonly bundled: Map<string, Promise<AudioBuffer>>;
-  readonly custom: Map<SoundEventId, { id: string; buffer: Promise<AudioBuffer> }>;
+  readonly custom: Map<CustomSoundClipId, { id: string; buffer: Promise<AudioBuffer> }>;
 }
 
 interface Playback {
@@ -136,26 +139,36 @@ export function setDictationRecording(session: object, recording: boolean): void
   activeVoice = undefined;
 }
 
+async function loadCustomClip(
+  output: AudioOutput,
+  event: CustomSoundClipId,
+): Promise<AudioBuffer | undefined> {
+  if (typeof indexedDB === "undefined") return undefined;
+  const clip = await readCustomSound(event).catch(() => undefined);
+  if (clip) {
+    let cached = output.custom.get(event);
+    if (cached?.id !== clip.id) {
+      cached = { id: clip.id, buffer: output.context.decodeAudioData(clip.data) };
+      output.custom.set(event, cached);
+    }
+    const buffer = await cached.buffer.catch(() => undefined);
+    if (buffer) return buffer;
+    if (output.custom.get(event) === cached) output.custom.delete(event);
+  } else {
+    output.custom.delete(event);
+  }
+  return undefined;
+}
+
 async function loadEvent(
   output: AudioOutput,
   event: SoundEventId,
   pack: SoundPackId,
   useCustom: boolean,
 ): Promise<AudioBuffer | undefined> {
-  if (useCustom && typeof indexedDB !== "undefined") {
-    const clip = await readCustomSound(event).catch(() => undefined);
-    if (clip) {
-      let cached = output.custom.get(event);
-      if (cached?.id !== clip.id) {
-        cached = { id: clip.id, buffer: output.context.decodeAudioData(clip.data) };
-        output.custom.set(event, cached);
-      }
-      const buffer = await cached.buffer.catch(() => undefined);
-      if (buffer) return buffer;
-      if (output.custom.get(event) === cached) output.custom.delete(event);
-    } else {
-      output.custom.delete(event);
-    }
+  if (useCustom) {
+    const custom = await loadCustomClip(output, event);
+    if (custom) return custom;
   }
   if (pack === "default" && (event === "completion" || event === "input")) {
     return loadBundled(output, DEFAULT_SAMPLES[event]).catch(() => undefined);
@@ -223,7 +236,7 @@ function playEvent(
 
 function eligible(event: SoundEventId, read: () => SoundSettings | undefined) {
   const settings = read();
-  return settings && settings.soundVolume > 0 && soundEventEnabled(event, settings)
+  return settings && resolveSoundVolume(event, settings) > 0 && soundEventEnabled(event, settings)
     ? settings
     : undefined;
 }
@@ -263,7 +276,7 @@ async function flushNotifications() {
       activeNotification.stop();
     }
     activeNotification = {
-      ...playEvent(output, event, current.soundPack, current.soundVolume, buffer),
+      ...playEvent(output, event, current.soundPack, resolveSoundVolume(event, current), buffer),
       event,
     };
     return;
@@ -313,20 +326,14 @@ export async function playVoiceSound(
       !signal?.aborted
     ) {
       activeVoice?.stop();
+      const volume = resolveSoundVolume(event, current);
       if (event !== "voice-start") {
-        activeVoice = playEvent(output, event, current.soundPack, current.soundVolume, buffer);
+        activeVoice = playEvent(output, event, current.soundPack, volume, buffer);
         return;
       }
       const finished = Promise.withResolvers<void>();
       const { context } = output;
-      activeVoice = playEvent(
-        output,
-        event,
-        current.soundPack,
-        current.soundVolume,
-        buffer,
-        finished.resolve,
-      );
+      activeVoice = playEvent(output, event, current.soundPack, volume, buffer, finished.resolve);
       const stop = activeVoice.stop;
       const onStateChange = () => {
         if (context.state !== "running") stop();
@@ -353,26 +360,34 @@ export async function previewSoundEvent(
   const sequence = ++previewSequence;
   activePreview?.stop();
   activePreview = undefined;
-  if (settings.soundVolume === 0) return;
+  const volume = pack === undefined ? resolveSoundVolume(event, settings) : settings.soundVolume;
+  if (volume === 0) return;
   try {
     const output = getAudio();
     await wakeAudio(output);
     const selectedPack = pack ?? settings.soundPack;
     const buffer = await loadEvent(output, event, selectedPack, pack === undefined);
     if (sequence === previewSequence && output.context.state === "running") {
-      activePreview = playEvent(output, event, selectedPack, settings.soundVolume, buffer);
+      activePreview = playEvent(output, event, selectedPack, volume, buffer);
     }
   } catch {
     // Preview is best effort when browser audio is unavailable.
   }
 }
 
-export async function playBundledSound(url: string, volume = DEFAULT_SOUND_VOLUME): Promise<void> {
+export async function playCustomOrBundledSound(
+  clipId: CustomSoundClipId,
+  fallbackUrl: string,
+  volume = DEFAULT_SOUND_VOLUME,
+  options?: { readonly useCustom?: boolean },
+): Promise<void> {
   if (volume === 0) return;
   try {
     const output = getAudio();
     await wakeAudio(output);
-    const buffer = await loadBundled(output, url);
+    const buffer =
+      (options?.useCustom === false ? undefined : await loadCustomClip(output, clipId)) ??
+      (await loadBundled(output, fallbackUrl));
     if (output.context.state === "running") {
       play(output, volume, (destination, ended) =>
         playBuffer(output.context, destination, buffer, ended),

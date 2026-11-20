@@ -3,7 +3,7 @@
 // (auto-settle after a merge or idle days, an agent organizing threads, another device) plays
 // `automaticSound`. Files come from `<T3 home>/userdata/sounds` on the primary server. See FORK.md.
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
-import type { ClientSettings } from "@t3tools/contracts/settings";
+import { resolveSoundVolume, type ClientSettings } from "@t3tools/contracts/settings";
 import * as Option from "effect/Option";
 import type { AtomRegistry } from "effect/reactivity";
 
@@ -100,13 +100,16 @@ let lastPlayedAt = 0;
 
 function playSettleSound(kind: SettleSoundKind, settings: ClientSettings["settleSounds"]): void {
   if (!settings.enabled) return;
+  const volume =
+    resolveSoundVolume(
+      kind === "manual" ? "settle-manual" : "settle-automatic",
+      getClientSettings(),
+    ) / 100;
+  if (volume <= 0) return;
   const now = Date.now();
   if (now - lastPlayedAt < MIN_GAP_MS) return;
   lastPlayedAt = now;
-  previewSettleSound(
-    kind === "manual" ? settings.manualSound : settings.automaticSound,
-    settings.volume,
-  );
+  previewSettleSound(kind === "manual" ? settings.manualSound : settings.automaticSound, volume);
 }
 
 const manualClaims = new Map<string, Map<ThreadId, number>>();

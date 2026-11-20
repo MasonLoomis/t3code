@@ -386,6 +386,20 @@ describe("movedSettingsPath", () => {
     expect(movedSettingsPath("/settings/storage", "")).toBe("/settings/maintenance");
     expect(movedSettingsPath("/settings/integrations", "devices")).toBe("/settings/devices");
     expect(movedSettingsPath("/settings/beta", "")).toBe("/settings/labs");
+    expect(movedSettingsPath("/settings/general", "settle-sounds")).toBe("/settings/sounds");
+    expect(movedSettingsPath("/settings/general", "notification-sound-pack")).toBe(
+      "/settings/sounds",
+    );
+  });
+
+  it("places Sounds between Keybindings and Voice in the settings sidebar", () => {
+    const paths = SETTINGS_NAV_GROUPS.flatMap((group) => group.paths);
+    const keybindingsIndex = paths.indexOf("/settings/keybindings");
+    const soundsIndex = paths.indexOf("/settings/sounds");
+    const voiceIndex = paths.indexOf("/settings/voice");
+    expect(keybindingsIndex).toBeGreaterThanOrEqual(0);
+    expect(soundsIndex).toBe(keybindingsIndex + 1);
+    expect(voiceIndex).toBe(soundsIndex + 1);
   });
 
   it("leaves current pages alone", () => {
