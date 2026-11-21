@@ -1,0 +1,325 @@
+# Fork-only (MasonLoomis/t3code). Rebases the fork's patch series onto each new upstream stable
+# tag (vX.Y.Z, no suffix), runs the checks, builds the Windows installer and publishes it as the
+# release the fork's auto-updater reads. Any conflict or failure opens an issue and publishes
+# nothing. See FORK.md.
+name: Fork sync
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: Rebuild and republish the current tag even if its release exists
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: fork-sync
+  cancel-in-progress: false
+
+env:
+  FORK_BRANCH: mason/stable
+  CANDIDATE_BRANCH: mason/candidate
+  UPSTREAM_URL: https://github.com/pingdotgg/t3code.git
+
+jobs:
+  plan:
+    if: github.repository == 'MasonLoomis/t3code'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      base: ${{ steps.plan.outputs.base }}
+      rebase: ${{ steps.plan.outputs.rebase }}
+      release: ${{ steps.plan.outputs.release }}
+      stable_sha: ${{ steps.plan.outputs.stable_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FORK_BRANCH }}
+          fetch-depth: 0
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REBUILD: ${{ inputs.rebuild || false }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags "$UPSTREAM_URL" '+refs/tags/v*:refs/tags/v*'
+          tag="$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+          base="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)"
+          rebase=false
+          [[ "$tag" != "$base" ]] && rebase=true
+          release=true
+          # Fork releases use the upstream tag name because the app links update notes to vX.Y.Z.
+          if [[ "$rebase" == false && "$REBUILD" != true ]] && gh release view "$tag" >/dev/null 2>&1; then
+            release=false
+          fi
+          echo "Latest upstream stable: $tag. Fork base: $base. Rebase: $rebase. Release: $release."
+          {
+            echo "tag=$tag"
+            echo "base=$base"
+            echo "rebase=$rebase"
+            echo "release=$release"
+            echo "stable_sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+  rebase:
+    needs: plan
+    if: needs.plan.outputs.rebase == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.rebase.outputs.sha }}
+      conflict: ${{ steps.rebase.outputs.conflict }}
+    steps:
+      - name: Require a token that can push workflow changes
+        env:
+          TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+        run: |
+          if [[ -z "$TOKEN" ]]; then
+            echo "::error::Add a FORK_SYNC_TOKEN secret (see FORK.md). The built-in token cannot push upstream workflow changes."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FORK_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.FORK_SYNC_TOKEN }}
+      - id: rebase
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          BASE: ${{ needs.plan.outputs.base }}
+        run: |
+          set -euo pipefail
+          git config user.name "fork-sync"
+          git config user.email "fork-sync@users.noreply.github.com"
+          git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/tags/$TAG:refs/tags/$TAG" "+refs/tags/$BASE:refs/tags/$BASE"
+          if ! git rebase --onto "$TAG" "$BASE" 2> rebase-error.txt; then
+            {
+              echo "The fork's patch series does not apply cleanly to upstream \`$TAG\`. Nothing was published."
+              echo
+              echo "Conflicting files:"
+              echo '```'
+              git diff --name-only --diff-filter=U || true
+              echo '```'
+              echo "Rebase output:"
+              echo '```'
+              tail -40 rebase-error.txt
+              echo '```'
+              echo "Resolve it locally with the steps under \"Resolving a conflict\" in FORK.md."
+              echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            } > issue.md
+            git rebase --abort || true
+            gh issue create --title "Fork sync: conflict rebasing onto $TAG" --body-file issue.md
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          git push --force-with-lease origin "HEAD:refs/heads/$CANDIDATE_BRANCH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: [plan, rebase]
+    if: |
+      !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.release == 'true' &&
+      (needs.rebase.result == 'success' || needs.rebase.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.rebase.outputs.sha || needs.plan.outputs.stable_sha }}
+          fetch-depth: 0
+      - run: git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/tags/${{ needs.plan.outputs.tag }}:refs/tags/${{ needs.plan.outputs.tag }}"
+      - uses: ./.github/actions/setup-ci-deps
+      - name: Install the test browser
+        working-directory: apps/web
+        run: vp exec playwright install --with-deps chromium
+      - name: Check the fork's changes
+        run: vp run check:changed "${{ needs.plan.outputs.tag }}"
+
+  # The Windows app runs this Linux CLI inside WSL, and in WSL-only mode it is the server the
+  # app talks to, so it is built from the fork too rather than taken from the upstream release.
+  wsl-runtime:
+    needs: [plan, rebase, check]
+    if: |
+      !cancelled() && needs.check.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.rebase.outputs.sha || needs.plan.outputs.stable_sha }}
+      - uses: ./.github/actions/setup-ci-deps
+      - name: Align package versions to the release
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: node scripts/update-release-package-versions.ts "${TAG#v}"
+      - name: Use the public cloud config
+        run: cp .env.example .env
+      - name: Build the server and web bundle
+        run: vp run build:desktop:bundle
+      - name: Apply web client branding
+        run: node scripts/apply-web-brand-assets.ts production apps/server/dist/client
+      - name: Build the resource monitor
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml --target x86_64-unknown-linux-gnu
+          mkdir -p "$RUNNER_TEMP/cli-resource-monitor/linux-x64"
+          cp native/resource-monitor/target/x86_64-unknown-linux-gnu/release/t3-resource-monitor "$RUNNER_TEMP/cli-resource-monitor/linux-x64/"
+      - name: Build the CLI executable
+        run: node apps/server/scripts/cli.ts build-exe --verbose
+      - name: Install patchelf
+        run: command -v patchelf || { sudo apt-get update && sudo apt-get install -y patchelf; }
+      - name: Build and smoke-test the CLI archive
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node scripts/build-cli-archive.ts --platform linux --arch x64 --version "${TAG#v}" \
+            --resource-monitor-dir "$RUNNER_TEMP/cli-resource-monitor" --output-dir release-cli
+          node scripts/smoke-cli-archive.ts --archive release-cli/* --expect-version "${TAG#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wsl-runtime
+          path: release-cli/*.tar.gz
+          if-no-files-found: error
+
+  build:
+    needs: [plan, rebase, check, wsl-runtime]
+    if: |
+      !cancelled() && needs.wsl-runtime.result == 'success'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.rebase.outputs.sha || needs.plan.outputs.stable_sha }}
+      - uses: ./.github/actions/setup-ci-deps
+      - name: Align package versions to the release
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: node scripts/update-release-package-versions.ts "${TAG#v}"
+      - name: Add Rust target
+        run: rustup target add x86_64-pc-windows-msvc
+      # The official public Clerk and relay ids, so T3 sign-in and Connect behave as in the official app.
+      - name: Use the public cloud config
+        run: cp .env.example .env
+      - uses: actions/download-artifact@v4
+        with:
+          name: wsl-runtime
+          path: wsl-runtime
+      # Official Windows installers are cross-built on Linux, which never generates the server
+      # compile cache. Building on Windows would add it and exceed the 80-file payload limit;
+      # this flag skips it (and the bundle self-check that the check job already covers).
+      - name: Build the installer
+        env:
+          T3CODE_DESKTOP_UNTRUSTED_BUNDLE: "true"
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          vp run dist:desktop:artifact --platform win --target nsis --arch x64 \
+            --build-version "${TAG#v}" --output-dir release-out \
+            --wsl-runtime "$(ls wsl-runtime/*.tar.gz)" --keep-stage --verbose
+          ls -la release-out
+      - name: List the packaged files
+        if: failure()
+        run: |
+          for dir in "$RUNNER_TEMP"/t3code-desktop-win-stage-*/ "$TEMP"/t3code-desktop-win-stage-*/; do
+            [[ -d "$dir" ]] && find "$dir" -path '*win-unpacked/*' -type f | sed "s|^$dir||" | sort
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            release-out/*.exe
+            release-out/*.blockmap
+            release-out/latest.yml
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    needs: [plan, rebase, wsl-runtime, build]
+    if: |
+      !cancelled() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FORK_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: release-out
+      - name: Move the fork branch to the rebased commit
+        if: needs.rebase.outputs.sha != ''
+        env:
+          SHA: ${{ needs.rebase.outputs.sha }}
+          # The commit the rebase started from, so a push made during the build is never overwritten.
+          EXPECTED: ${{ needs.plan.outputs.stable_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "$CANDIDATE_BRANCH"
+          git push --force-with-lease="$FORK_BRANCH:$EXPECTED" origin "$SHA:refs/heads/$FORK_BRANCH"
+          git push origin --delete "$CANDIDATE_BRANCH" || true
+      - name: Mirror upstream main
+        if: needs.rebase.outputs.sha != ''
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags "$UPSTREAM_URL" "+refs/heads/main:refs/remotes/upstream/main"
+          git push origin "refs/remotes/upstream/main:refs/heads/main" || echo "::warning::Could not mirror main."
+      # The built-in token was refused (HTTP 403) creating a release here; the sync token works.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          SHA: ${{ needs.rebase.outputs.sha }}
+          STABLE_SHA: ${{ needs.plan.outputs.stable_sha }}
+        run: |
+          set -euo pipefail
+          target="${SHA:-$STABLE_SHA}"
+          notes="T3 Code ${TAG} with Mason's fork patches (settle sounds). Upstream notes: https://github.com/pingdotgg/t3code/releases/tag/${TAG}
+
+          Windows only, unsigned: SmartScreen asks once before the installer runs. See FORK.md."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-out/* --clobber
+          else
+            # The fork's copy of the upstream tag points at upstream's commit; the release tag
+            # must point at the fork's build instead.
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG"
+            fi
+            gh release create "$TAG" release-out/* --target "$target" \
+              --title "T3 Code ${TAG#v} (Mason fork)" --notes "$notes" --latest
+          fi
+
+  report:
+    needs: [plan, rebase, check, wsl-runtime, build, publish]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          CONFLICT: ${{ needs.rebase.outputs.conflict }}
+          RESULTS: "plan=${{ needs.plan.result }} rebase=${{ needs.rebase.result }} check=${{ needs.check.result }} wsl-runtime=${{ needs.wsl-runtime.result }} build=${{ needs.build.result }} publish=${{ needs.publish.result }}"
+        run: |
+          set -euo pipefail
+          title="Fork sync failed for ${TAG:-the latest tag}"
+          # A rebase conflict already opened its own issue.
+          [[ "$CONFLICT" == "true" ]] && exit 0
+          if gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number' | grep -q .; then
+            exit 0
+          fi
+          gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body "Nothing was published. Job results: $RESULTS
+
+          Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

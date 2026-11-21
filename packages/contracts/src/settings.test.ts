@@ -20,6 +20,8 @@ import {
   resolveIdleCompaction,
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
+  resolveSoundVolume,
+  SETTLE_SOUND_PACK_DEFAULT,
   ServerSettings,
   ServerSettingsPatch,
   withIdleCompaction,
@@ -126,6 +128,12 @@ describe("storage cleanup settings", () => {
     expect(() =>
       decodeServerSettingsPatch({ storageCleanup: { worktreeKeepWhen: "unknown" } }),
     ).toThrow();
+  });
+});
+
+describe("ClientSettings terminal close confirmation", () => {
+  it("keeps confirmation enabled for settings without a saved preference", () => {
+    expect(decodeClientSettings({}).confirmTerminalClose).toBe(true);
   });
 });
 
@@ -547,5 +555,87 @@ describe("server model preferences", () => {
     const input = { favorites: [], providerModelPreferences: {} };
     expect(encodeServerSettings(decodeServerSettings(input))).toMatchObject(input);
     expect(decodeServerSettingsPatch(input)).toEqual(input);
+  });
+});
+
+describe("sound settings", () => {
+  it("defaults sound customization fields and validates bounds", () => {
+    const defaults = decodeClientSettings({});
+    expect(defaults.soundPack).toBe("default");
+    expect(defaults.soundVolume).toBe(80);
+    expect(defaults.soundFocusPolicy).toBe("always");
+    expect(defaults.soundEvents).toEqual({});
+    expect(defaults.soundEventVolumes).toEqual({});
+    expect(defaults.soundThemeConfigs).toEqual([]);
+    expect(defaults.settleSounds.manualSound).toBe(SETTLE_SOUND_PACK_DEFAULT);
+    expect(defaults.settleSounds.automaticSound).toBe(SETTLE_SOUND_PACK_DEFAULT);
+    expect(defaults.settleSounds.unsettleSound).toBe(SETTLE_SOUND_PACK_DEFAULT);
+    expect(resolveSoundVolume("completion", defaults)).toBe(80);
+    expect(
+      resolveSoundVolume("settle-manual", {
+        soundVolume: 80,
+        soundEventVolumes: { "settle-manual": 45 },
+      }),
+    ).toBe(45);
+    expect(
+      resolveSoundVolume("unsettle", {
+        soundVolume: 80,
+        soundEventVolumes: { unsettle: 65 },
+      }),
+    ).toBe(65);
+
+    expect(
+      decodeClientSettingsPatch({
+        soundPack: "galactic",
+        soundVolume: 65,
+        soundFocusPolicy: "background-threads",
+        soundEvents: { approval: true, "voice-start": true, completion: false },
+        soundEventVolumes: {
+          approval: 100,
+          "snap-shot": 40,
+          "settle-manual": 55,
+          unsettle: 70,
+        },
+        soundThemeConfigs: [
+          {
+            id: "transformers",
+            name: "Transformers",
+            themeId: "transformers",
+            soundPack: "retro",
+            settleManualSound: "Transformers-G1-Scene-Transition.wav",
+            settleAutomaticSound: "Transformers-G1-Transformation.wav",
+            autoApplyWithTheme: true,
+          },
+        ],
+      }),
+    ).toEqual({
+      soundPack: "galactic",
+      soundVolume: 65,
+      soundFocusPolicy: "background-threads",
+      soundEvents: { approval: true, "voice-start": true, completion: false },
+      soundEventVolumes: {
+        approval: 100,
+        "snap-shot": 40,
+        "settle-manual": 55,
+        unsettle: 70,
+      },
+      soundThemeConfigs: [
+        {
+          id: "transformers",
+          name: "Transformers",
+          themeId: "transformers",
+          soundPack: "retro",
+          settleManualSound: "Transformers-G1-Scene-Transition.wav",
+          settleAutomaticSound: "Transformers-G1-Transformation.wav",
+          unsettleSound: SETTLE_SOUND_PACK_DEFAULT,
+          autoApplyWithTheme: true,
+        },
+      ],
+    });
+
+    expect(() => decodeClientSettingsPatch({ soundVolume: 105 })).toThrow();
+    expect(() => decodeClientSettingsPatch({ soundVolume: -5 })).toThrow();
+    expect(() => decodeClientSettingsPatch({ soundEventVolumes: { approval: 101 } })).toThrow();
+    expect(() => decodeClientSettingsPatch({ soundPack: "invalid-pack" })).toThrow();
   });
 });

@@ -1,15 +1,16 @@
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { msg } from "gt-react";
 
-import completionUrl from "./assets/notification-completion.mp3";
-import inputUrl from "./assets/notification-input.mp3";
+import { getClientSettings } from "./hooks/useSettings";
+import { queueNotificationSound, soundAllowedByFocus, unlockSoundAudio } from "./lib/soundEngine";
 
 type NotificationMode = ClientSettings["notificationMode"];
 export const NOTIFICATION_MODE_LABELS = {
-  off: "Off",
-  notifications: "Notifications only",
-  sound: "Sound only",
-  "notifications-and-sound": "Notifications with sound",
+  off: msg("Off", { $context: "notification setting, no notifications or sound" }),
+  notifications: msg("Notifications only"),
+  sound: msg("Sound only"),
+  "notifications-and-sound": msg("Notifications with sound"),
 } satisfies Record<NotificationMode, string>;
 
 export function hasNotificationSound(mode: NotificationMode) {
@@ -80,56 +81,25 @@ export function setNotificationBadge(count: number) {
   void bridge?.setNotificationBadge({ count, image }).catch(() => undefined);
 }
 
-let audioContext: AudioContext | undefined;
-const buffers = new Map<string, Promise<AudioBuffer>>();
-/** When each sound's current playback ends, on the audio context's clock. */
-const playingUntil = new Map<string, number>();
-
-function loadNotificationBuffer(context: AudioContext, url: string): Promise<AudioBuffer> {
-  let buffer = buffers.get(url);
-  if (!buffer) {
-    buffer = fetch(url)
-      .then((response) => response.arrayBuffer())
-      .then((data) => context.decodeAudioData(data))
-      .catch((error: unknown) => {
-        buffers.delete(url);
-        throw error;
-      });
-    buffers.set(url, buffer);
-  }
-  return buffer;
-}
-
-/** Called from a gesture so browsers allow later background playback. */
 export function unlockNotificationAudio() {
-  const firstUnlock = audioContext === undefined;
-  audioContext ??= new AudioContext();
-  void audioContext.resume().catch(() => undefined);
-  if (!firstUnlock) return;
-  // Fetch and decode during interaction so the first alert is ready when the thread finishes.
-  for (const url of [completionUrl, inputUrl]) {
-    void loadNotificationBuffer(audioContext, url).catch(() => undefined);
-  }
+  unlockSoundAudio(true);
 }
 
-export async function playNotificationSound(
-  kind: "completion" | "input",
-  shouldPlay: () => boolean,
-) {
-  if (!audioContext || audioContext.state !== "running") return;
-  const context = audioContext;
-  const url = kind === "completion" ? completionUrl : inputUrl;
-  try {
-    const decoded = await loadNotificationBuffer(context, url);
-    if (!shouldPlay() || context.state !== "running") return;
-    // Coalesce same-sound bursts after decode to avoid clipping; input and completion alerts keep separate slots.
-    if (context.currentTime < (playingUntil.get(url) ?? 0)) return;
-    const source = context.createBufferSource();
-    source.buffer = decoded;
-    source.connect(context.destination);
-    source.start();
-    playingUntil.set(url, context.currentTime + decoded.duration);
-  } catch {
-    // A failed load is retried on the next alert.
-  }
+export function playNotificationSound(
+  event: Parameters<typeof queueNotificationSound>[0],
+  isForegroundTarget: () => boolean,
+): void {
+  queueNotificationSound(event, () => {
+    const settings = getClientSettings();
+    if (
+      hasNotificationSound(settings.notificationMode) &&
+      soundAllowedByFocus(
+        settings.soundFocusPolicy,
+        document.visibilityState === "visible" && document.hasFocus(),
+        isForegroundTarget(),
+      )
+    )
+      return settings;
+    return undefined;
+  });
 }
