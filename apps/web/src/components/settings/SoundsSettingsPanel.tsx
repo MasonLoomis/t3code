@@ -659,9 +659,10 @@ export function SoundsSettingsPanel() {
       setCustomNames(await listCustomSoundNames());
     } catch (caught) {
       setError(isCustomSoundError(caught) ? caught.reason : "storage");
-    } finally {
-      setBusy(false);
     }
+    // Not a `finally` block: React Compiler can't lower try/finally and would skip this
+    // whole component. The catch never rethrows, so this always runs.
+    setBusy(false);
   };
 
   const downloadPack = async () => {
